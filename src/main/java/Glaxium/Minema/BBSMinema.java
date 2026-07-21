@@ -41,6 +41,13 @@ import java.io.File;
  * {@code Screen} outside BBS's UI entirely, matching how the old standalone
  * BBS-Minema mod's own UI worked). The old J keybind has been removed
  * completely -- Shift+F4 is its replacement out in the world.
+ *
+ * Plain F4 ONLY toggles recording (start/stop) -- it never opens any
+ * screen. Shift+F4 is the only way to open the quick-capture screen: if a
+ * recording is active it's stopped first (same as plain F4's stop), then
+ * the screen always opens; if nothing's recording, Shift+F4 just opens the
+ * screen with recording left untouched. See {@link #onClientTick} for the
+ * actual branch.
  * These settings still key off {@link #isAnyRecording()} -- true
  * either while BBS-Minema's own F4 recording is running, or while BBS
  * mod's own VideoRecorder happens to be active some other way (e.g. the
@@ -94,6 +101,13 @@ public class BBSMinema implements ClientModInitializer
         // the world unloads out from under an active recording.
         net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.DISCONNECT.register((handler, client) ->
         {
+            // Safe from any thread (this event fires on Netty's network
+            // thread, not the client thread) -- see SyncModule#disableAndRelease.
+            // Defense-in-depth alongside StopRecordingOnQuitWorldMixin, for
+            // any disconnect path that isn't one of MinecraftClient's own
+            // disconnect(...) overloads.
+            SyncModule.disableAndRelease();
+
             if (RawCaptureModule.INSTANCE.isRecording())
             {
                 RawCaptureModule.INSTANCE.stop();
@@ -155,19 +169,28 @@ public class BBSMinema implements ClientModInitializer
         {
             if (isShiftDown(handle))
             {
-                // Shift+F4 -- open the quick-capture screen instead of
-                // toggling recording. Consumes the same keypress;
-                // recording itself is untouched by this branch.
+                // Shift+F4 -- if recording, stop it first (same message as
+                // plain F4 below), then always open the quick-capture
+                // screen ("Minema settings"). If nothing's recording, this
+                // just opens the screen. Whatever screen (if any) was
+                // already open becomes its parent.
+                if (RawCaptureModule.INSTANCE.isRecording())
+                {
+                    RawCaptureModule.INSTANCE.stop();
+
+                    if (client.player != null)
+                    {
+                        client.player.sendMessage(Text.literal("BBS Minema: recording stopped"), true);
+                    }
+                }
+
                 client.setScreen(new MinemaQuickCaptureScreen(client.currentScreen));
             }
             else if (RawCaptureModule.INSTANCE.isRecording())
             {
-                // Plain F4 stops recording AND immediately opens the quick
-                // capture screen ("Minema settings"), same as Shift+F4 --
-                // whatever screen (if any) was already open becomes its
-                // parent.
+                // Plain F4 just stops recording -- no settings screen.
+                // Shift+F4 (above) is the only way to open Minema Settings now.
                 RawCaptureModule.INSTANCE.stop();
-                client.setScreen(new MinemaQuickCaptureScreen(client.currentScreen));
 
                 if (client.player != null)
                 {

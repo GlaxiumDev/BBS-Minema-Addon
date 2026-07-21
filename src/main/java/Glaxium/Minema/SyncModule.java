@@ -62,7 +62,47 @@ public class SyncModule
     /** VideoRecorder#serverTicks as of the last frame, so beginFrame() can work out how many *new* ticks this frame asked for. */
     private static volatile int lastObservedTarget = 0;
 
+    /**
+     * True on any frame where {@link #beginFrame()} bailed out because the
+     * game was paused. Used to detect the pause -> unpause transition so
+     * {@link #reset()} can re-arm the handshake cleanly on resume, rather
+     * than trying to reconcile whatever {@code captureReady}/{@code tickDone}
+     * were left at from mid-pause.
+     */
+    private static volatile boolean wasPaused = false;
+
     private SyncModule() {}
+
+    /**
+     * Immediately disables sync and wakes up anything currently parked in
+     * {@link #awaitPermissionToTick()} or {@link #awaitTick()} -- unlike
+     * flipping {@link #enabled} alone (which a waiter only notices on its
+     * next {@code WAIT_TIMEOUT_MS} timeout), this notifies right away.
+     *
+     * <p>Safe to call from ANY thread: it's just a volatile write plus a
+     * {@code notifyAll()}, no GL or other client-thread-only state
+     * touched (unlike {@link RawCaptureModule#stop()}).
+     *
+     * <p>Needed specifically for quitting a world: {@code
+     * MinecraftClient#disconnect(Screen)} blocks the calling thread until
+     * the integrated server thread fully stops, but that server thread can
+     * be parked in {@link #awaitPermissionToTick()} waiting on a release
+     * that would normally come from a later client tick/render frame --
+     * frames that never happen while {@code disconnect(Screen)} itself is
+     * still blocking. Without this, that's a genuine cross-thread deadlock
+     * (the freeze at "Saving world"), not just a slow spin -- {@link
+     * #enabled} alone going false wouldn't be noticed until the next
+     * timeout, and no further ticks/frames run to produce one.
+     */
+    public static void disableAndRelease()
+    {
+        enabled = false;
+
+        synchronized (LOCK)
+        {
+            LOCK.notifyAll();
+        }
+    }
 
     /**
      * Re-arms the handshake. Call this once, on the frame sync engine turns
@@ -158,6 +198,37 @@ public class SyncModule
      */
     public static void beginFrame()
     {
+        // Singleplayer's Esc/options menu (any Screen#shouldPause()==true --
+        // unlike the inventory, which doesn't pause) stops the integrated
+        // server from actually ticking the world. MinemaRenderTickCounterMixin
+        // keeps advancing the render thread's own tick counter every frame
+        // regardless of pause (it has no idea the world stopped), so without
+        // this check, the loop below would demand tick after tick that the
+        // server thread can never deliver -- awaitTick() spin-waits forever,
+        // and since this runs before the frame is actually drawn, the whole
+        // client thread appears to freeze the instant the menu opens.
+        if (MinecraftClient.getInstance().isPaused())
+        {
+            wasPaused = true;
+            // Don't let the gap build into a false "catch-up" burst of
+            // ticks once unpaused -- see the wasPaused branch below, which
+            // re-arms properly instead of relying on this alone.
+            lastObservedTarget = currentServerTicks();
+
+            return;
+        }
+
+        if (wasPaused)
+        {
+            // Coming back from a pause -- captureReady/tickDone may be left
+            // in whatever state a mid-pause tick() call (if any) put them,
+            // and lastObservedTarget doesn't reflect a real tick delta the
+            // server actually needs to run. Re-arm cleanly instead of
+            // reasoning about that leftover state.
+            reset();
+            wasPaused = false;
+        }
+
         boolean shouldSync = enabled
                 && (BBSModClient.getVideoRecorder().isRecording() || RawCaptureModule.INSTANCE.isRecording())
                 && MinecraftClient.getInstance().isIntegratedServerRunning();

@@ -10,7 +10,8 @@
     "DisableBBSVideoKeyMixin",
     "HideBBSVideoKeybindMixin",
     "MinemaRenderTickCounterMixin",
-    "WindowMixin"
+    "WindowMixin",
+    "StopRecordingOnQuitWorldMixin"
   ],
   "injectors": {
     "defaultRequire": 1

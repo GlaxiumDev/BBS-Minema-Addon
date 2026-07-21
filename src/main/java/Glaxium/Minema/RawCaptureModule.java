@@ -144,12 +144,32 @@ public class RawCaptureModule
 
     public void stop()
     {
+        MinecraftClient client = MinecraftClient.getInstance();
+
+        // stop() makes raw GL calls (via RawCaptureRecorder#stopRecording --
+        // glDeleteBuffers etc.), which are only legal on the thread that
+        // owns the GL context. Every caller inside this addon (F4/Shift+F4
+        // in BBSMinema#onClientTick, the window-resize guard in
+        // #captureFrame below) already runs on that thread -- but BBS
+        // mod's own quit-to-title path fires Fabric's
+        // ClientPlayConnectionEvents.DISCONNECT from Netty's network I/O
+        // thread instead, and that's exactly what was crashing with "No
+        // context is current" (LWJGL aborting the JVM on an off-thread GL
+        // call). Hopping onto the client thread via execute() here fixes
+        // that regardless of which hook ends up calling stop() -- it's a
+        // no-op hop (runs immediately) for callers already on the right
+        // thread, and a one-tick-deferred hop for anything that isn't.
+        if (!client.isOnThread())
+        {
+            client.execute(this::stop);
+
+            return;
+        }
+
         this.recorder.stopRecording();
 
         if (this.captureFramebuffer != null)
         {
-            MinecraftClient client = MinecraftClient.getInstance();
-
             if (this.originalFramebuffer != null)
             {
                 client.framebuffer = this.originalFramebuffer;
