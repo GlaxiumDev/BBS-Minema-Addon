@@ -21,9 +21,9 @@ import java.util.Arrays;
  * wherever that field appears, no mixin needed.
  *
  * "Minema Settings" opens {@link MinemaSettingsOverlayPanel} as a nested
- * overlay on top of whatever's currently open, the same way pressing J
- * anywhere in the dashboard does -- see BBSMinema#onRegisterDashboardPanels
- * for that path.
+ * overlay on top of whatever's currently open -- same panel, same size,
+ * that pressing J anywhere in the dashboard opens (see
+ * {@link Glaxium.Minema.MinemaAddonEvents#onRegisterDashboardPanels}).
  */
 public final class MinemaSettingsButton
 {
@@ -39,7 +39,8 @@ public final class MinemaSettingsButton
                     UIOverlay.addOverlay(ui.getContext(), new UIVideoSettingsOverlayPanel(value)));
 
             UIButton minemaSettings = new UIButton(IKey.raw("Minema Settings"), (b) ->
-                    UIOverlay.addOverlay(ui.getContext(), new MinemaSettingsOverlayPanel(), 240, 200));
+                    UIOverlay.addOverlay(ui.getContext(), new MinemaSettingsOverlayPanel(),
+                            MinemaSettingsOverlayPanel.WIDTH, MinemaSettingsOverlayPanel.HEIGHT));
 
             minemaSettings.color(0xB24DFF);
             minemaSettings.marginTop(4);

@@ -54,7 +54,7 @@ public final class MinemaQuickCaptureScreen extends Screen
     @Override
     protected void init()
     {
-        int colWidth = 275;
+        int colWidth = 180;
         int leftX = this.width / 2 - colWidth - 5;
         int rightX = this.width / 2 + 5;
         int y = this.height / 2 - 160;

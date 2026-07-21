@@ -121,18 +121,7 @@ public final class MinemaSettingsScreen extends Screen
         addField(x, y, "Width", Integer.toString(BBSSettings.videoSettings.width.get()));
         addField(x + 160, y, "Height", Integer.toString(BBSSettings.videoSettings.height.get()));
         addField(x, y + 32, "FPS", Integer.toString(BBSSettings.videoSettings.frameRate.get()));
-
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("3840 x 2160 (4K)"), b ->
-        {
-            this.fields.get(0).setText("3840");
-            this.fields.get(1).setText("2160");
-        }).dimensions(x, y + 64, 150, 20).build());
-
-        this.addDrawableChild(ButtonWidget.builder(Text.literal("1920 x 1080"), b ->
-        {
-            this.fields.get(0).setText("1920");
-            this.fields.get(1).setText("1080");
-        }).dimensions(x + 160, y + 64, 150, 20).build());
+        addField(x + 160, y + 32, "Frame limit", String.valueOf(this.config.frameLimit));
 
         // A choice between two capture modes, NOT an enable/disable switch,
         // and NOT a literal "make my window fullscreen" toggle -- see the
@@ -141,7 +130,7 @@ public final class MinemaSettingsScreen extends Screen
         {
             this.config.toggleCustomResolution();
             b.setMessage(captureModeText());
-        }).dimensions(x, y + 94, 310, 20).build());
+        }).dimensions(x, y + 70, 310, 20).build());
     }
 
     private Text captureModeText()
@@ -164,7 +153,7 @@ public final class MinemaSettingsScreen extends Screen
         this.addDrawableChild(UiToggle.of(x, y + 52, 310, this.config.captureDepth,
                 "Capture depth pass", v -> { this.config.captureDepth = v; this.config.save(); }));
 
-        addField(x, y + 84, "Depth capture distance", Double.toString(this.config.captureDepthDistance));
+        addField(x, y + 84, 310, "Depth capture distance", Double.toString(this.config.captureDepthDistance));
     }
 
     // ---- ENGINE tab: sync + engine speed ----
@@ -176,7 +165,7 @@ public final class MinemaSettingsScreen extends Screen
         this.addDrawableChild(UiToggle.of(x, y, 310, this.config.syncEngine,
                 "Sync engine to capture", v -> { this.config.syncEngine = v; this.config.save(); }));
 
-        addField(x, y + 32, "Engine speed", String.valueOf(this.config.engineSpeed));
+        addField(x, y + 32, 310, "Engine speed", String.valueOf(this.config.engineSpeed));
     }
 
     // ---- MISC tab: nothing addon-specific to configure yet besides output access -- BBS mod's own Frame Resolution/FPS/output path panel covers the rest ----
@@ -234,7 +223,12 @@ public final class MinemaSettingsScreen extends Screen
 
     private void addField(int x, int y, String label, String value)
     {
-        TextFieldWidget field = new TextFieldWidget(this.textRenderer, x, y + 12, 150, 20, Text.literal(label));
+        addField(x, y, 150, label, value);
+    }
+
+    private void addField(int x, int y, int width, String label, String value)
+    {
+        TextFieldWidget field = new TextFieldWidget(this.textRenderer, x, y + 12, width, 20, Text.literal(label));
 
         field.setText(value);
         field.setMaxLength(16);
@@ -251,7 +245,7 @@ public final class MinemaSettingsScreen extends Screen
             {
                 case RESOLUTION ->
                 {
-                    if (this.fields.size() >= 3)
+                    if (this.fields.size() >= 4)
                     {
                         // Same ValueInt objects BBS mod's own settings panel
                         // edits -- .set() clamps to each one's declared
@@ -262,6 +256,8 @@ public final class MinemaSettingsScreen extends Screen
                                 Integer.parseInt(this.fields.get(1).getText().trim()));
                         BBSSettings.videoSettings.frameRate.set(
                                 Integer.parseInt(this.fields.get(2).getText().trim()));
+                        this.config.setFrameLimit(
+                                Integer.parseInt(this.fields.get(3).getText().trim()));
                     }
                 }
                 case CAPTURING ->
@@ -316,6 +312,13 @@ public final class MinemaSettingsScreen extends Screen
             TextFieldWidget field = this.fields.get(i);
 
             context.drawTextWithShadow(this.textRenderer, this.fieldLabels.get(i), field.getX(), field.getY() - 10, 0xA0A0A0);
+        }
+
+        if (this.tab == Tab.RESOLUTION)
+        {
+            context.drawCenteredTextWithShadow(this.textRenderer,
+                    Text.literal("Frame limit: -1 = unlimited, otherwise stops recording after that many frames"),
+                    this.width / 2, this.height - 54, 0x808080);
         }
 
         if (!this.error.getString().isEmpty())
