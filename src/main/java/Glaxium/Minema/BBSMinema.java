@@ -162,7 +162,12 @@ public class BBSMinema implements ClientModInitializer
             }
             else if (RawCaptureModule.INSTANCE.isRecording())
             {
+                // Plain F4 stops recording AND immediately opens the quick
+                // capture screen ("Minema settings"), same as Shift+F4 --
+                // whatever screen (if any) was already open becomes its
+                // parent.
                 RawCaptureModule.INSTANCE.stop();
+                client.setScreen(new MinemaQuickCaptureScreen(client.currentScreen));
 
                 if (client.player != null)
                 {

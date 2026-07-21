@@ -138,6 +138,19 @@ public final class MinemaQuickCaptureScreen extends Screen
         }
     }
 
+    /**
+     * IMPORTANT: when starting, this closes the screen BEFORE calling
+     * RawCaptureModule#start() -- not after. When custom-resolution capture
+     * is active, start() calls client.onResolutionChanged(), which resizes
+     * and re-inits whatever screen is current at that moment. This button's
+     * onPress() is itself running from inside THIS screen's own click
+     * dispatch (Screen#mouseClicked iterating its children) -- if start()
+     * re-inits this same screen while that click is still being processed,
+     * it rebuilds/clears the very widget list mouseClicked is mid-iteration
+     * over, which is what caused the crash/freeze. Closing first hands
+     * "current screen" over to the parent (or null) so any resize triggered
+     * by start() lands there instead of on ourselves.
+     */
     private void toggleRecording()
     {
         if (RawCaptureModule.INSTANCE.isRecording())
@@ -148,9 +161,13 @@ public final class MinemaQuickCaptureScreen extends Screen
         }
         else if (applyFields())
         {
+            this.close();
             RawCaptureModule.INSTANCE.start();
-            this.status = Text.literal("Recording started");
-            this.clearAndInit();
+
+            if (this.client != null && this.client.player != null)
+            {
+                this.client.player.sendMessage(Text.literal("BBS Minema: recording started"), true);
+            }
         }
     }
 

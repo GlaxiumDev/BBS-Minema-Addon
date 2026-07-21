@@ -183,6 +183,37 @@ public class RawCaptureModule
             return;
         }
 
+        // Only the plain (non-custom-resolution) path reads FBO 0 -- the
+        // REAL window backbuffer -- directly, at whatever width/height it
+        // happened to be when startRecording() ran. If the physical window
+        // is resized while that's happening (dragging a windowed game's
+        // border, or toggling Fullscreen/changing GUI Scale from the
+        // vanilla Video Settings screen while F4 recording is active),
+        // glReadPixels(0, 0, staleWidth, staleHeight, ...) is reading a
+        // size that no longer matches FBO 0's actual, reallocated
+        // dimensions -- undefined content at best, a driver-level crash at
+        // worst. Stop cleanly the moment that happens instead of feeding
+        // ffmpeg (and the GPU) a mismatched read every frame after.
+        if (this.recorder.isReadingRealBackbuffer())
+        {
+            MinecraftClient client = MinecraftClient.getInstance();
+            Window window = client.getWindow();
+
+            if (window.getFramebufferWidth() != this.recorder.getWidth()
+                    || window.getFramebufferHeight() != this.recorder.getHeight())
+            {
+                this.stop();
+
+                if (client.player != null)
+                {
+                    client.player.sendMessage(net.minecraft.text.Text.literal(
+                            "BBS Minema: recording stopped (window was resized)"), true);
+                }
+
+                return;
+            }
+        }
+
         this.recorder.recordFrame();
     }
 }

@@ -209,21 +209,27 @@ public final class MinemaSettingsScreen extends Screen
         }
     }
 
+    /**
+     * IMPORTANT: when starting, this closes the screen BEFORE calling
+     * RawCaptureModule#start() -- see the identical comment on
+     * MinemaQuickCaptureScreen#toggleRecording() for why: start() can call
+     * client.onResolutionChanged() (custom-resolution fullscreen capture),
+     * which re-inits whatever screen is current at that moment, and doing
+     * that to THIS screen while its own button click is still being
+     * dispatched is what caused the crash/freeze on "Start Recording".
+     */
     private void toggleRecording()
     {
         if (RawCaptureModule.INSTANCE.isRecording())
         {
             RawCaptureModule.INSTANCE.stop();
+            this.clearAndInit();
         }
-        else
+        else if (applyFields())
         {
-            if (applyFields())
-            {
-                RawCaptureModule.INSTANCE.start();
-            }
+            this.close();
+            RawCaptureModule.INSTANCE.start();
         }
-
-        this.clearAndInit();
     }
 
     private void addField(int x, int y, String label, String value)

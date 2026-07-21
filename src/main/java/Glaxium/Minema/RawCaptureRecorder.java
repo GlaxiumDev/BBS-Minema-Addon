@@ -69,6 +69,24 @@ public class RawCaptureRecorder
         return this.recording;
     }
 
+    /** The width this recording's ffmpeg process/PBOs were sized for at startRecording() time -- glReadPixels must never be asked to read more than this from a since-resized real backbuffer. */
+    public int getWidth()
+    {
+        return this.width;
+    }
+
+    /** @see #getWidth() */
+    public int getHeight()
+    {
+        return this.height;
+    }
+
+    /** True only while reading from the real screen backbuffer (FBO 0) -- i.e. the plain, non-custom-resolution capture path, the one that's vulnerable to the physical window being resized out from under it mid-recording. */
+    public boolean isReadingRealBackbuffer()
+    {
+        return this.recording && this.readTextureId == 0;
+    }
+
     /** Backwards-compatible overload -- always reads FBO 0 (the real screen), same as the original behaviour. */
     public void startRecording(int width, int height)
     {
