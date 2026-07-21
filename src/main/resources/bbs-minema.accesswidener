@@ -1,0 +1,14 @@
+accessWidener v2 named
+
+# Framebuffer#getDepthAttachment, BBSModClient#getVideoRecorder, and
+# BBSRendering's public statics are already public, no entries needed here.
+#
+# MinecraftClient#framebuffer (used by RawCaptureModule for custom-resolution
+# capture) -- BBS mod's OWN access widener declares this same entry
+# (bbs.accesswidener), but relying on that transitively did NOT work with
+# this project's actual Loom setup (confirmed by a real build: "framebuffer
+# has private access in MinecraftClient"), so it's declared directly here
+# too. Redundant across two mods' AWs is fine -- Fabric Loader just merges
+# them -- this just stops depending on transitivity working at all.
+accessible field net/minecraft/client/MinecraftClient framebuffer Lnet/minecraft/client/gl/Framebuffer;
+mutable field net/minecraft/client/MinecraftClient framebuffer Lnet/minecraft/client/gl/Framebuffer;

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "id": "bbs_minema",
+  "version": "${version}",
+  "name": "BBS Minema",
+  "description": "Records a linearized depth pass alongside BBS mod's video recordings, for compositing in After Effects/Resolve/Nuke.",
+  "authors": ["you"],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/bbs_minema/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "Glaxium.Minema.BBSMinema"
+    ]
+  },
+  "mixins": [
+    "bbs-minema.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.0",
+    "fabric-api": "*",
+    "minecraft": "1.20.4",
+    "bbs": "*"
+  }
+}

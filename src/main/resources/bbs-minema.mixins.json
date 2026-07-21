@@ -1,0 +1,18 @@
+{
+  "required": true,
+  "package": "Glaxium.Minema.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "MinecraftClientRenderSyncMixin",
+    "MinecraftServerTickSyncMixin",
+    "SoundEngineMixin",
+    "MinecraftClientRawCaptureMixin",
+    "DisableBBSVideoKeyMixin",
+    "HideBBSVideoKeybindMixin",
+    "MinemaRenderTickCounterMixin",
+    "WindowMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
