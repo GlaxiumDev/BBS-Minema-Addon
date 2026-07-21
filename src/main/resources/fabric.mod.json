@@ -12,6 +12,9 @@
   "entrypoints": {
     "client": [
       "Glaxium.Minema.BBSMinema"
+    ],
+    "bbs-addon": [
+      "Glaxium.Minema.MinemaAddonEvents"
     ]
   },
   "mixins": [

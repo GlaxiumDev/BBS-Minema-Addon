@@ -110,6 +110,16 @@ public class MinemaConfig
      */
     public double engineSpeed = 1.0;
 
+    /**
+     * Mirrors Minema 1.12.2's "Frame Limit" (MinemaConfig#frameLimit /
+     * CaptureSession -- {@code if (frameLimit > 0 && numFrames >= frameLimit) stop()}).
+     * -1 (default) means unlimited -- recording only stops when the user
+     * stops it manually. Any positive value auto-stops the recording once
+     * that many frames have been captured, e.g. 300 at 60fps stops after
+     * exactly 5 seconds of output.
+     */
+    public int frameLimit = -1;
+
     public void load()
     {
         if (!Files.exists(PATH))
@@ -149,6 +159,9 @@ public class MinemaConfig
             this.engineSpeed = Double.parseDouble(
                     props.getProperty("engineSpeed", String.valueOf(this.engineSpeed))
             );
+            this.frameLimit = Integer.parseInt(
+                    props.getProperty("frameLimit", String.valueOf(this.frameLimit))
+            );
         }
         catch (IOException | NumberFormatException e)
         {
@@ -168,6 +181,7 @@ public class MinemaConfig
         props.setProperty("rawCaptureMode", String.valueOf(this.rawCaptureMode));
         props.setProperty("customResolution", String.valueOf(this.customResolution));
         props.setProperty("engineSpeed", String.valueOf(this.engineSpeed));
+        props.setProperty("frameLimit", String.valueOf(this.frameLimit));
 
         try
         {
@@ -228,6 +242,13 @@ public class MinemaConfig
         }
 
         this.engineSpeed = Math.max(0.01, Math.min(100.0, speed));
+        this.save();
+    }
+
+    /** -1 means unlimited (Minema 1.12.2's convention); anything else is clamped to at least -1 so a stray 0 or negative typo doesn't behave surprisingly differently from "-1 = unlimited". */
+    public void setFrameLimit(int frameLimit)
+    {
+        this.frameLimit = Math.max(-1, frameLimit);
         this.save();
     }
 }

@@ -58,6 +58,15 @@ public class RawCaptureModule
      */
     private volatile int serverTicks;
 
+    /**
+     * How many frames this recording has captured so far -- drives
+     * {@link MinemaConfig#frameLimit}'s auto-stop, same accounting Minema
+     * 1.12.2's CaptureSession used ({@code time.getNumFrames()}). Reset to 0
+     * in {@link #start()}, incremented once per frame at the end of
+     * {@link #captureFrame()}.
+     */
+    private int framesCaptured;
+
     /** Non-null only while a custom-resolution fullscreen capture is active. */
     private CaptureFramebuffer captureFramebuffer;
 
@@ -94,6 +103,7 @@ public class RawCaptureModule
         }
 
         this.serverTicks = 0;
+        this.framesCaptured = 0;
 
         MinecraftClient client = MinecraftClient.getInstance();
         Window window = client.getWindow();
@@ -235,5 +245,25 @@ public class RawCaptureModule
         }
 
         this.recorder.recordFrame();
+        this.framesCaptured++;
+
+        // Same convention as Minema 1.12.2's CaptureSession: frameLimit <= 0
+        // means unlimited, and the check happens right after the frame that
+        // reaches the limit is captured (so a limit of 300 keeps exactly
+        // frames 1..300, not 299).
+        int frameLimit = MinemaConfig.INSTANCE.frameLimit;
+
+        if (frameLimit > 0 && this.framesCaptured >= frameLimit)
+        {
+            this.stop();
+
+            MinecraftClient client = MinecraftClient.getInstance();
+
+            if (client.player != null)
+            {
+                client.player.sendMessage(net.minecraft.text.Text.literal(
+                        "BBS Minema: recording stopped (frame limit reached)"), true);
+            }
+        }
     }
 }

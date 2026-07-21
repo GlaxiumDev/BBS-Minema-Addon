@@ -32,15 +32,19 @@ import java.io.File;
  * BBS mod's recorder being active at all.
  *
  * The depth pass, in-game audio, tick sync, custom resolution, and engine
- * speed settings are all reachable from two places that both read/write
+ * speed settings are all reachable from three places that all read/write
  * the exact same {@link MinemaConfig#INSTANCE}, so they're always in sync
  * with each other: BBS's own "Minema Settings" button inside its video
- * settings panel (opens {@link Glaxium.Minema.ui.MinemaSettingsOverlayPanel},
- * built on BBS's UI framework), and Shift+F4 out in the world (opens
+ * settings panel, the J key anywhere in the dashboard (both open
+ * {@link Glaxium.Minema.ui.MinemaSettingsOverlayPanel}, built on BBS's UI
+ * framework -- see {@link Glaxium.Minema.MinemaAddonEvents} for the J
+ * registration), and Shift+F4 out in the world (opens
  * {@link Glaxium.Minema.ui.MinemaQuickCaptureScreen}, a standalone vanilla
  * {@code Screen} outside BBS's UI entirely, matching how the old standalone
- * BBS-Minema mod's own UI worked). The old J keybind has been removed
- * completely -- Shift+F4 is its replacement out in the world.
+ * BBS-Minema mod's own UI worked). J previously did something different in
+ * an earlier version of this addon and was removed; this is a new,
+ * unrelated binding that happens to reuse the same key, chosen to match
+ * F6's "open a settings panel from anywhere" behaviour.
  *
  * Plain F4 ONLY toggles recording (start/stop) -- it never opens any
  * screen. Shift+F4 is the only way to open the quick-capture screen: if a
