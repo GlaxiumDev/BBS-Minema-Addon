@@ -201,10 +201,13 @@ public final class MinemaSettingsScreen extends Screen
         this.addDrawableChild(ButtonWidget.builder(Text.literal("Open recordings folder"), b -> openVideoFolder())
                 .dimensions(x, y, 310, 20).build());
 
+        this.addDrawableChild(UiToggle.of(x, y + 30, 310, this.config.showOverlay,
+                "Show Overlay", v -> { this.config.showOverlay = v; this.config.save(); }));
+
         this.addDrawableChild(ButtonWidget.builder(
                 Text.literal(RawCaptureModule.INSTANCE.isRecording() ? "Stop Recording" : "Start Recording"),
                 b -> toggleRecording()
-        ).dimensions(x, y + 30, 310, 20).build());
+        ).dimensions(x, y + 60, 310, 20).build());
     }
 
     private void openVideoFolder()

@@ -166,6 +166,17 @@ public class MinemaConfig
      */
     public String customEncoderArgs = "";
 
+    /**
+     * On by default. Controls {@link Glaxium.Minema.ui.RecordingOverlay} -- the small red "REC"
+     * indicator drawn while F4 capture is active. Off just hides that indicator; recording itself
+     * is completely unaffected either way. Exposed as its own "Show Overlay" toggle (not tied to
+     * BBS mod's own {@code BBSSettings.recordingOverlays}) in both
+     * {@link Glaxium.Minema.ui.MinemaSettingsScreen} and
+     * {@link Glaxium.Minema.ui.MinemaSettingsOverlayPanel}, same two-way sync as every other
+     * setting here.
+     */
+    public boolean showOverlay = true;
+
     public void load()
     {
         if (!Files.exists(PATH))
@@ -223,6 +234,9 @@ public class MinemaConfig
             }
 
             this.customEncoderArgs = props.getProperty("customEncoderArgs", this.customEncoderArgs);
+            this.showOverlay = Boolean.parseBoolean(
+                    props.getProperty("showOverlay", String.valueOf(this.showOverlay))
+            );
         }
         catch (IOException | NumberFormatException e)
         {
@@ -246,6 +260,7 @@ public class MinemaConfig
         props.setProperty("encoderPreset", this.encoderPreset);
         props.setProperty("encoderMode", this.encoderMode.name());
         props.setProperty("customEncoderArgs", this.customEncoderArgs);
+        props.setProperty("showOverlay", String.valueOf(this.showOverlay));
 
         try
         {
@@ -295,6 +310,12 @@ public class MinemaConfig
     public void toggleCustomResolution()
     {
         this.customResolution = !this.customResolution;
+        this.save();
+    }
+
+    public void toggleShowOverlay()
+    {
+        this.showOverlay = !this.showOverlay;
         this.save();
     }
 

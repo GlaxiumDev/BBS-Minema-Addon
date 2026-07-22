@@ -78,6 +78,12 @@ public class RawCaptureModule
         return this.recorder.isRecording();
     }
 
+    /** How many frames the current (or most recently finished) recording has captured -- see {@link #framesCaptured}. */
+    public int getFramesCaptured()
+    {
+        return this.framesCaptured;
+    }
+
     public int getServerTicks()
     {
         return this.serverTicks;

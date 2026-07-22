@@ -4,7 +4,6 @@ import Glaxium.Minema.RawCaptureModule;
 import Glaxium.Minema.SyncModule;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.text.Text;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -65,12 +64,5 @@ public class StopRecordingOnQuitWorldMixin
         // are always called from it, never from Netty's thread), so this
         // runs its GL cleanup inline rather than hopping via execute().
         RawCaptureModule.INSTANCE.stop();
-
-        MinecraftClient client = (MinecraftClient) (Object) this;
-
-        if (client.player != null)
-        {
-            client.player.sendMessage(Text.literal("BBS Minema: recording stopped"), true);
-        }
     }
 }

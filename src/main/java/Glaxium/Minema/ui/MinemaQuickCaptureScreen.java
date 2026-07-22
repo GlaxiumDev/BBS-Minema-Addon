@@ -5,6 +5,7 @@ import Glaxium.Minema.RawCaptureModule;
 import Glaxium.Minema.util.FolderOpener;
 import mchorse.bbs_mod.BBSSettings;
 import mchorse.bbs_mod.client.BBSRendering;
+import mchorse.bbs_mod.ui.utils.UIUtils;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
@@ -156,6 +157,7 @@ public final class MinemaQuickCaptureScreen extends Screen
         if (RawCaptureModule.INSTANCE.isRecording())
         {
             RawCaptureModule.INSTANCE.stop();
+            UIUtils.playClick();
             this.status = Text.literal("Recording stopped");
             this.clearAndInit();
         }
@@ -163,11 +165,7 @@ public final class MinemaQuickCaptureScreen extends Screen
         {
             this.close();
             RawCaptureModule.INSTANCE.start();
-
-            if (this.client != null && this.client.player != null)
-            {
-                this.client.player.sendMessage(Text.literal("BBS Minema: recording started"), true);
-            }
+            UIUtils.playClick();
         }
     }
 

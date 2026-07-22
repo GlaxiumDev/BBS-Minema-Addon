@@ -42,7 +42,7 @@ public class MinemaSettingsOverlayPanel extends UIOverlayPanel
      * each hardcoding its own numbers, so they can't drift out of sync.
      */
     public static final int WIDTH = 340;
-    public static final int HEIGHT = 460;
+    public static final int HEIGHT = 486;
 
     private final MinemaConfig config = MinemaConfig.INSTANCE;
     private UIButton recordButton;
@@ -105,6 +105,12 @@ public class MinemaSettingsOverlayPanel extends UIOverlayPanel
         UIButton openFolder = new UIButton(IKey.raw("Open recordings folder"), (b) ->
                 FolderOpener.open(BBSRendering.getVideoFolder().toPath()));
 
+        UIToggle showOverlay = new UIToggle(IKey.raw("Show Overlay"), this.config.showOverlay, (b) ->
+        {
+            this.config.showOverlay = b.getValue();
+            this.config.save();
+        });
+
         // Same MinemaConfig#encoderMode field MinemaSettingsScreen's own
         // cycle button reads/writes -- cycling it here changes it there
         // too, and vice versa, no glue code needed (see class doc comment).
@@ -156,6 +162,7 @@ public class MinemaSettingsOverlayPanel extends UIOverlayPanel
                 encoderMode,
                 UI.label(IKey.raw("Custom encoder args (Encoder = Custom Encoder only)")).marginTop(6),
                 this.customEncoderArgs,
+                showOverlay.marginTop(6),
                 openFolder.marginTop(10)
 //                this.recordButton
         );

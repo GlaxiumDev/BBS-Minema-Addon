@@ -2,8 +2,10 @@ package Glaxium.Minema;
 
 import Glaxium.Minema.ui.MinemaQuickCaptureScreen;
 import Glaxium.Minema.ui.MinemaSettingsButton;
+import Glaxium.Minema.ui.RecordingOverlay;
 import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.client.BBSRendering;
+import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.utils.StringUtils;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -14,7 +16,6 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gl.Framebuffer;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
-import net.minecraft.text.Text;
 import org.lwjgl.glfw.GLFW;
 
 import java.io.File;
@@ -103,6 +104,7 @@ public class BBSMinema implements ClientModInitializer
         ));
 
         MinemaSettingsButton.register();
+        RecordingOverlay.register();
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
         WorldRenderEvents.LAST.register(this::onWorldRenderLast);
@@ -196,11 +198,7 @@ public class BBSMinema implements ClientModInitializer
                 if (RawCaptureModule.INSTANCE.isRecording())
                 {
                     RawCaptureModule.INSTANCE.stop();
-
-                    if (client.player != null)
-                    {
-                        client.player.sendMessage(Text.literal("BBS Minema: recording stopped"), true);
-                    }
+                    UIUtils.playClick();
                 }
 
                 // inWorldWithNoScreenOpen already guarantees
@@ -214,20 +212,12 @@ public class BBSMinema implements ClientModInitializer
                 // Plain F4 just stops recording -- no settings screen.
                 // Shift+F4 (above) is the only way to open Minema Settings now.
                 RawCaptureModule.INSTANCE.stop();
-
-                if (client.player != null)
-                {
-                    client.player.sendMessage(Text.literal("BBS Minema: recording stopped"), true);
-                }
+                UIUtils.playClick();
             }
             else
             {
                 RawCaptureModule.INSTANCE.start();
-
-                if (client.player != null)
-                {
-                    client.player.sendMessage(Text.literal("BBS Minema: recording started"), true);
-                }
+                UIUtils.playClick();
             }
         }
 

@@ -215,6 +215,24 @@ public class RawCaptureRecorder
             args.add(encoder);
             args.addAll(Arrays.asList(params.split(" ")));
             args.addAll(Arrays.asList(encoderArgs));
+
+            // glReadPixels hands us full-range (0-255) RGB straight off the screen. Without
+            // telling ffmpeg that explicitly, libswscale's default RGB->YUV conversion assumes
+            // limited (16-235) "TV" range and a BT.601 matrix -- neither matches what was
+            // actually on screen, which is exactly the "recording looks duller/different colors
+            // than the game" symptom: blacks get lifted, whites get crushed, and reds in
+            // particular shift noticeably under BT.601 vs BT.709. Tagging the actual
+            // range/matrix here makes the conversion (and the file's metadata) match reality
+            // instead of guessing.
+            args.add("-color_range");
+            args.add("pc");
+            args.add("-colorspace");
+            args.add("bt709");
+            args.add("-color_primaries");
+            args.add("bt709");
+            args.add("-color_trc");
+            args.add("bt709");
+
             args.add("-pix_fmt");
             args.add("yuv420p");
             args.add(movieName + ".mp4");
