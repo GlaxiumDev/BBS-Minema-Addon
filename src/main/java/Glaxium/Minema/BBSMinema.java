@@ -169,15 +169,24 @@ public class BBSMinema implements ClientModInitializer
 
         this.f4WasDown = f4Down;
 
-        if (f4Pressed)
+        // In a world (singleplayer OR connected to a server) AND nothing --
+        // inventory, vanilla settings/pause, BBS mod's own dashboard/film
+        // editor, another mod's screen, anything -- is currently covering
+        // it. Both F4 and Shift+F4 are gated on this: neither one should
+        // fire from the main menu / world-select / multiplayer-list screens
+        // (client.world == null there), and neither should fire while any
+        // GUI is already open on top of gameplay (client.currentScreen !=
+        // null covers inventory, pause, BBS's UI, everything).
+        boolean inWorldWithNoScreenOpen = client.world != null && client.currentScreen == null;
+
+        if (f4Pressed && inWorldWithNoScreenOpen)
         {
             if (isShiftDown(handle))
             {
                 // Shift+F4 -- if recording, stop it first (same message as
-                // plain F4 below), then always open the quick-capture
-                // screen ("Minema settings"). If nothing's recording, this
-                // just opens the screen. Whatever screen (if any) was
-                // already open becomes its parent.
+                // plain F4 below), then open the quick-capture screen
+                // ("Minema settings"). If nothing's recording, this just
+                // opens the screen.
                 if (RawCaptureModule.INSTANCE.isRecording())
                 {
                     RawCaptureModule.INSTANCE.stop();
@@ -188,7 +197,11 @@ public class BBSMinema implements ClientModInitializer
                     }
                 }
 
-                client.setScreen(new MinemaQuickCaptureScreen(client.currentScreen));
+                // inWorldWithNoScreenOpen already guarantees
+                // client.currentScreen == null, so this always opens as a
+                // fresh, parentless screen -- never layered on top of
+                // another GUI.
+                client.setScreen(new MinemaQuickCaptureScreen(null));
             }
             else if (RawCaptureModule.INSTANCE.isRecording())
             {
@@ -210,6 +223,18 @@ public class BBSMinema implements ClientModInitializer
                     client.player.sendMessage(Text.literal("BBS Minema: recording started"), true);
                 }
             }
+        }
+
+        // If the world unloads (quit to title) while a recording was
+        // active, stop it even though f4Pressed/inWorldWithNoScreenOpen
+        // above won't fire again from the main menu to do it -- mirrors
+        // the same cleanup the DISCONNECT event handler in
+        // onInitializeClient already does for the network-thread
+        // disconnect path; this covers any other route back to
+        // client.world == null (e.g. singleplayer "Save and Quit to Title").
+        if (client.world == null && RawCaptureModule.INSTANCE.isRecording())
+        {
+            RawCaptureModule.INSTANCE.stop();
         }
 
         // Either toggle alone should still capture -- "Generate .wav" by
