@@ -1,15 +1,16 @@
 package Glaxium.Minema;
 
+import mchorse.bbs_mod.audio.Wave;
+import mchorse.bbs_mod.audio.wav.WaveWriter;
 import mchorse.bbs_mod.utils.FFMpegUtils;
 import mchorse.bbs_mod.utils.StringUtils;
 import net.minecraft.client.MinecraftClient;
 import org.lwjgl.openal.SOFTLoopback;
 import org.lwjgl.system.MemoryUtil;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.nio.FloatBuffer;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -39,6 +40,18 @@ import java.util.concurrent.TimeUnit;
  * class doc for why that's what keeps this in sync during slow-motion
  * (tick-synced) recording instead of drifting like a real-time capture
  * would.
+ *
+ * <p>The actual sample capture (OpenAL loopback via {@link GameAudioController}) has no
+ * equivalent in BBS mod -- its own audio pipeline mixes down a Film's pre-placed
+ * {@code AudioClip} timeline offline (see {@code AudioRenderer#renderAudio}), not a live
+ * arbitrary gameplay session -- so that part stays addon-owned. What this class *does* borrow
+ * from BBS mod is its {@code Wave}/{@link WaveWriter} pair: captured PCM is buffered into a
+ * {@link Wave} exactly like {@code AudioRenderer#renderAudio} builds its mixdown, then written
+ * out with the same {@code WaveWriter.write(File, Wave)} call that method itself uses, instead
+ * of this addon hand-poking RIFF header bytes. Note this does mean the captured audio sits in
+ * memory for the length of the recording (no incremental "patch the header afterward" streaming
+ * write exists in the published bbs-mod API this addon compiles against) -- fine for typical
+ * clip lengths, worth knowing for very long recordings.
  */
 public class GameAudioRecorder
 {
@@ -47,7 +60,7 @@ public class GameAudioRecorder
     private static final int SAMPLE_RATE = GameAudioController.SAMPLE_RATE;
 
     private File wavFile;
-    private FileOutputStream stream;
+    private ByteArrayOutputStream pcmBuffer;
     private int fps;
     private double pendingSamples;
     private long writtenBytes;
@@ -84,36 +97,25 @@ public class GameAudioRecorder
             return;
         }
 
-        try
-        {
-            folder.toFile().mkdirs();
+        folder.toFile().mkdirs();
 
-            this.wavFile = folder.resolve(baseName + "_audio.wav").toFile();
-            this.stream = new FileOutputStream(this.wavFile);
-            this.fps = Math.max(1, fps);
-            this.pendingSamples = 0;
-            this.writtenBytes = 0;
-            this.waitingForDevice = true;
+        this.wavFile = folder.resolve(baseName + "_audio.wav").toFile();
+        this.pcmBuffer = new ByteArrayOutputStream();
+        this.fps = Math.max(1, fps);
+        this.pendingSamples = 0;
+        this.writtenBytes = 0;
+        this.waitingForDevice = true;
 
-            // 44-byte placeholder RIFF/WAVE header, patched with real sizes in stopRecording().
-            this.stream.write(new byte[44]);
+        // Route SoundEngine to a loopback device the next time it (re)inits.
+        GameAudioController.requestCapture(true);
 
-            // Route SoundEngine to a loopback device the next time it (re)inits.
-            GameAudioController.requestCapture(true);
+        MinecraftClient client = MinecraftClient.getInstance();
 
-            MinecraftClient client = MinecraftClient.getInstance();
+        client.getSoundManager().stopAll();
+        client.getSoundManager().reloadSounds();
+        client.getSoundManager().stopAll();
 
-            client.getSoundManager().stopAll();
-            client.getSoundManager().reloadSounds();
-            client.getSoundManager().stopAll();
-
-            this.recording = true;
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
-            this.closeQuietly();
-        }
+        this.recording = true;
     }
 
     /**
@@ -169,12 +171,8 @@ public class GameAudioRecorder
                 pcm[index++] = (byte) ((pcm16 >> 8) & 0xFF);
             }
 
-            this.stream.write(pcm);
+            this.pcmBuffer.write(pcm, 0, pcm.length);
             this.writtenBytes += pcm.length;
-        }
-        catch (IOException e)
-        {
-            e.printStackTrace();
         }
         finally
         {
@@ -206,75 +204,42 @@ public class GameAudioRecorder
         client.getSoundManager().reloadSounds();
         client.getSoundManager().stopAll();
 
-        this.finalizeWavHeader();
+        this.writeWavFile();
 
         if (this.waitingForDevice)
         {
             // Loopback device never actually came up -- e.g. this system's
             // OpenAL runtime doesn't support SOFT_loopback. There's a valid
-            // (near-silent, header-only) WAV on disk, but it's not useful.
+            // (near-silent) WAV on disk, but it's not useful.
             System.err.println("[bbs-minema] Game audio recording produced no samples -- "
-                + "does your OpenAL runtime support the SOFT_loopback extension?");
+                    + "does your OpenAL runtime support the SOFT_loopback extension?");
         }
 
         File finished = this.wavFile;
 
         this.wavFile = null;
+        this.pcmBuffer = null;
 
         return finished;
     }
 
-    private void finalizeWavHeader()
+    /**
+     * Builds a bbs-fs {@link Wave} from the buffered PCM and writes it with
+     * {@code WaveWriter.write(File, Wave)} -- the same call {@code AudioRenderer#renderAudio}
+     * itself uses to write its own mixdown, reused here instead of hand-poking RIFF bytes.
+     */
+    private void writeWavFile()
     {
         try
         {
-            if (this.stream != null)
-            {
-                this.stream.flush();
-                this.stream.close();
-                this.stream = null;
-            }
+            Wave wave = new Wave(1, CHANNELS, SAMPLE_RATE, BITS_PER_SAMPLE, this.pcmBuffer.toByteArray());
 
-            int byteRate = SAMPLE_RATE * CHANNELS * BITS_PER_SAMPLE / 8;
-            short blockAlign = (short) (CHANNELS * BITS_PER_SAMPLE / 8);
-
-            try (RandomAccessFile raf = new RandomAccessFile(this.wavFile, "rw"))
-            {
-                raf.writeBytes("RIFF");
-                raf.writeInt(Integer.reverseBytes((int) (36 + this.writtenBytes)));
-                raf.writeBytes("WAVE");
-                raf.writeBytes("fmt ");
-                raf.writeInt(Integer.reverseBytes(16));
-                raf.writeShort(Short.reverseBytes((short) 1));
-                raf.writeShort(Short.reverseBytes((short) CHANNELS));
-                raf.writeInt(Integer.reverseBytes(SAMPLE_RATE));
-                raf.writeInt(Integer.reverseBytes(byteRate));
-                raf.writeShort(Short.reverseBytes(blockAlign));
-                raf.writeShort(Short.reverseBytes((short) BITS_PER_SAMPLE));
-                raf.writeBytes("data");
-                raf.writeInt(Integer.reverseBytes((int) this.writtenBytes));
-            }
+            WaveWriter.write(this.wavFile, wave);
         }
         catch (IOException e)
         {
             e.printStackTrace();
         }
-    }
-
-    private void closeQuietly()
-    {
-        try
-        {
-            if (this.stream != null)
-            {
-                this.stream.close();
-            }
-        }
-        catch (IOException ignored) {}
-
-        this.stream = null;
-        this.recording = false;
-        GameAudioController.requestCapture(false);
     }
 
     /**
@@ -308,8 +273,8 @@ public class GameAudioRecorder
         if (video == null)
         {
             System.err.println("[bbs-minema] Couldn't find the color video to mux game audio into "
-                + "(looked in " + folder + " for a video newer than recording start). "
-                + "The WAV is still on disk at " + audio.getAbsolutePath() + ".");
+                    + "(looked in " + folder + " for a video newer than recording start). "
+                    + "The WAV is still on disk at " + audio.getAbsolutePath() + ".");
 
             return;
         }
@@ -391,10 +356,10 @@ public class GameAudioRecorder
             String lower = name.toLowerCase();
 
             return Arrays.asList("mp4", "mkv", "mov", "webm", "avi").contains(this.extensionOf(lower))
-                && !lower.contains("_depth")
-                && !lower.contains("_audio")
-                && !lower.contains("_muxed")
-                && !lower.contains("_noaudio");
+                    && !lower.contains("_depth")
+                    && !lower.contains("_audio")
+                    && !lower.contains("_muxed")
+                    && !lower.contains("_noaudio");
         });
 
         if (candidates == null || candidates.length == 0)
@@ -409,9 +374,9 @@ public class GameAudioRecorder
         long cutoff = recordingStartedAt - 5000L;
 
         return Arrays.stream(candidates)
-            .filter(f -> f.lastModified() >= cutoff)
-            .max(Comparator.comparingLong(File::lastModified))
-            .orElse(null);
+                .filter(f -> f.lastModified() >= cutoff)
+                .max(Comparator.comparingLong(File::lastModified))
+                .orElse(null);
     }
 
     private String extensionOf(String name)
