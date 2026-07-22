@@ -54,10 +54,15 @@ public class RawCaptureRecorder
     private int pboIndex;
 
     /**
-     * The off-screen capture texture id to read from instead of FBO 0, or 0
-     * to mean "read the real screen backbuffer" (original behaviour). Set
-     * once at {@link #startRecording(int, int, int)} time by
-     * RawCaptureModule.
+     * The off-screen capture texture id currently attached to {@link #readFbo}, or 0 to mean
+     * "read the real screen backbuffer" (original behaviour). This is NOT trustworthy as a
+     * long-lived reference -- the off-screen Framebuffer's color attachment can be deleted and
+     * recreated at any point (most notably by {@code MinecraftClient#onResolutionChanged()},
+     * whose {@code Framebuffer#resize()} call unconditionally tears down and rebuilds the color
+     * texture even when the size doesn't actually change). {@link #updateReadTexture(int)} is how
+     * this gets kept in sync -- called once right after the resize that happens at the start of a
+     * custom-resolution recording, and again every captured frame after that as a cheap defensive
+     * measure against any later resize doing the same thing mid-recording.
      */
     private int readTextureId;
 
@@ -99,6 +104,11 @@ public class RawCaptureRecorder
      * the custom off-screen capture resolution. colorTextureId is the
      * off-screen capture framebuffer's color attachment to read from
      * instead of the real screen; pass 0 to read FBO 0 as before.
+     *
+     * <p>This attachment is only a starting point -- if the caller's off-screen framebuffer gets
+     * resized (and therefore its color texture recreated) after this returns, call
+     * {@link #updateReadTexture(int)} with the new id or every frame captured afterwards will read
+     * a deleted texture and come out solid black.
      */
     public void startRecording(int width, int height, int colorTextureId)
     {
@@ -202,6 +212,32 @@ public class RawCaptureRecorder
         {
             e.printStackTrace();
         }
+    }
+
+    /**
+     * Re-points {@link #readFbo}'s color attachment at whatever texture id is currently live,
+     * instead of the one that was current back at {@link #startRecording(int, int, int)} time.
+     * Cheap (a single glFramebufferTexture2D state update, no allocation) -- safe and intended to
+     * be called every captured frame while a custom-resolution recording is active, as insurance
+     * against the off-screen framebuffer being resized (and its color texture silently recreated)
+     * at any point during the recording, not just once right at the start.
+     *
+     * <p>No-op if not currently recording from an off-screen texture (colorTextureId == 0 case),
+     * or if the id hasn't actually changed since last time.
+     */
+    public void updateReadTexture(int colorTextureId)
+    {
+        if (!this.recording || this.readFbo == 0 || colorTextureId == 0 || colorTextureId == this.readTextureId)
+        {
+            return;
+        }
+
+        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, this.readFbo);
+        GL30.glFramebufferTexture2D(GL30.GL_READ_FRAMEBUFFER, GL30.GL_COLOR_ATTACHMENT0,
+                GL30.GL_TEXTURE_2D, colorTextureId, 0);
+        GL30.glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, 0);
+
+        this.readTextureId = colorTextureId;
     }
 
     public void stopRecording()

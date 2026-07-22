@@ -140,6 +140,15 @@ public class RawCaptureModule
             // key its "active" check off (this.recorder.isRecording() is
             // already true by this point).
             client.onResolutionChanged();
+
+            // onResolutionChanged() just resized client.framebuffer -- which is our
+            // captureFramebuffer right now -- and vanilla Framebuffer#resize() unconditionally
+            // deletes and recreates the color attachment texture even when the size doesn't
+            // change. The texture id the recorder just attached itself to above is therefore
+            // already stale/deleted by this point; re-sync it to whatever the (now genuinely
+            // final) texture id actually is before a single frame gets captured, or every frame
+            // of the recording comes out solid black.
+            this.recorder.updateReadTexture(this.captureFramebuffer.colorTextureId());
         }
         else
         {
@@ -242,6 +251,18 @@ public class RawCaptureModule
 
                 return;
             }
+        }
+
+        // Defensive re-sync for the custom-resolution path: cheap (a single GL state update,
+        // no allocation) insurance against the off-screen capture framebuffer's color texture
+        // getting recreated again mid-recording (e.g. an Iris shader reload, or anything else
+        // that calls onResolutionChanged() while F4 is still active) -- without this, that would
+        // reproduce the exact same "attached to a deleted texture -> solid black" bug this method
+        // was written to fix in the first place, just later into the recording instead of at the
+        // very start of it.
+        if (this.captureFramebuffer != null)
+        {
+            this.recorder.updateReadTexture(this.captureFramebuffer.colorTextureId());
         }
 
         this.recorder.recordFrame();
