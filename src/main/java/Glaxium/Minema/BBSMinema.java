@@ -70,6 +70,12 @@ public class BBSMinema implements ClientModInitializer
     private boolean wasSyncing = false;
     private boolean wasRecordingAudio = false;
 
+    /** Non-null only while sync engine has raised the integrated server's tick rate -- see the syncingNow rising/falling edge handling in {@link #onClientTick}. */
+    private net.minecraft.server.MinecraftServer syncedServer;
+
+    /** The tick rate {@link #syncedServer} actually had before sync engine raised it, restored on the falling edge. */
+    private float oldTickRate;
+
     /** Set the moment we open the WAV file, used to find BBS mod's own output video for muxing afterwards -- see GameAudioRecorder#muxIntoVideo. */
     private long audioRecordingStartedAt;
 
@@ -300,6 +306,42 @@ public class BBSMinema implements ClientModInitializer
             // sync on mid-recording doesn't try to catch up on ticks that
             // already ran unsynced.
             SyncModule.reset();
+
+            // MinecraftServer.runServer() paces itself against the real system clock -- it
+            // sleeps whenever a tick finishes "early" relative to the vanilla 50ms/tick
+            // schedule -- so the integrated server never ticks faster than ~20 TPS in real
+            // time. SyncModule's handshake correctly holds the render thread open until a
+            // fresh tick finishes, but that tick itself is still bound by this real-time
+            // ceiling regardless -- which is exactly why sync was capping out at 60fps: at
+            // the default 60fps export target, every 3rd rendered frame needs one new tick,
+            // and 3 frames per tick at a max of 20 ticks/sec is exactly 60fps, not a
+            // coincidence. Raising the tick rate ceiling here -- the same mechanism behind
+            // vanilla's own "/tick rate" command -- removes that ceiling for the duration of
+            // the recording instead of fighting it. Restored on the falling edge below.
+            net.minecraft.server.MinecraftServer server = client.getServer();
+
+            if (server != null)
+            {
+                this.syncedServer = server;
+                this.oldTickRate = server.getTickManager().getTickRate();
+                server.getTickManager().setTickRate(10000F);
+            }
+        }
+        else if (!syncingNow && this.wasSyncing && this.syncedServer != null)
+        {
+            // Falling edge -- restore whatever the tick rate actually was before sync turned
+            // this up, rather than assuming vanilla's default of 20; someone may have had a
+            // custom rate set (e.g. via /tick rate) before recording ever started. Guarded --
+            // this can fire right as the world is unloading (e.g. quit to title), by which
+            // point the server may already be mid-shutdown; restoring the tick rate doesn't
+            // matter once the server's gone anyway.
+            try
+            {
+                this.syncedServer.getTickManager().setTickRate(this.oldTickRate);
+            }
+            catch (Exception ignored) {}
+
+            this.syncedServer = null;
         }
 
         SyncModule.enabled = syncingNow;

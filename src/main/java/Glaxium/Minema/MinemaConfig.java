@@ -120,6 +120,20 @@ public class MinemaConfig
      */
     public int frameLimit = -1;
 
+    /**
+     * x264 preset passed to ffmpeg in {@link RawCaptureRecorder}. Defaults to "ultrafast" rather
+     * than a quality-oriented preset like "medium" -- this is the single biggest lever on actual
+     * sustained capture framerate, since {@link RawCaptureRecorder} writes raw frames into
+     * ffmpeg's stdin pipe, and once encode throughput can't keep up with incoming frames, that
+     * pipe fills and blocks the writer thread (see RawCaptureRecorder's async writer), which
+     * backpressures all the way to the render thread once the buffer pool runs out of free
+     * slots. "medium" tops out around 90-120fps encoding 1080p on typical hardware; "ultrafast"
+     * commonly reaches several hundred fps to 1000+ depending on resolution/CPU, at the cost of
+     * a larger output file for the same CRF. Any valid libx264 preset name works: ultrafast,
+     * superfast, veryfast, faster, fast, medium, slow, slower, veryslow.
+     */
+    public String encoderPreset = "ultrafast";
+
     public void load()
     {
         if (!Files.exists(PATH))
@@ -162,6 +176,7 @@ public class MinemaConfig
             this.frameLimit = Integer.parseInt(
                     props.getProperty("frameLimit", String.valueOf(this.frameLimit))
             );
+            this.encoderPreset = props.getProperty("encoderPreset", this.encoderPreset);
         }
         catch (IOException | NumberFormatException e)
         {
@@ -182,6 +197,7 @@ public class MinemaConfig
         props.setProperty("customResolution", String.valueOf(this.customResolution));
         props.setProperty("engineSpeed", String.valueOf(this.engineSpeed));
         props.setProperty("frameLimit", String.valueOf(this.frameLimit));
+        props.setProperty("encoderPreset", this.encoderPreset);
 
         try
         {
@@ -249,6 +265,12 @@ public class MinemaConfig
     public void setFrameLimit(int frameLimit)
     {
         this.frameLimit = Math.max(-1, frameLimit);
+        this.save();
+    }
+
+    public void setEncoderPreset(String preset)
+    {
+        this.encoderPreset = (preset == null || preset.isBlank()) ? "ultrafast" : preset.trim();
         this.save();
     }
 }

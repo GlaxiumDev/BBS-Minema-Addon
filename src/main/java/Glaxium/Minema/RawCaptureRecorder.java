@@ -21,6 +21,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -31,20 +33,56 @@ import java.util.concurrent.TimeUnit;
  * other mods' UIs show up in the recording, matching how Minema 1.12.2
  * behaved (it captured the real screen, not an isolated offscreen pass).
  *
- * Structurally almost identical to MinemaRecorder (double-buffered PBOs,
- * raw pipe into ffmpeg) -- the differences are: reads GL_BGR color instead
- * of GL_DEPTH_COMPONENT (so no linearization step, straight passthrough),
- * and reads from whatever texture id it's given each frame rather than one
+ * <p>Structurally: double-buffered PBOs for the GL readback (hides GPU
+ * readback latency), then a small bounded pool of reusable host-memory
+ * buffers handed off to a dedicated writer thread that owns the actual
+ * blocking pipe write into ffmpeg's stdin. The render thread only ever
+ * does GL calls plus a fast host-memory copy -- it never blocks on I/O
+ * directly. This matters a lot for achievable framerate: writing straight
+ * to ffmpeg's stdin from the render thread (the previous approach) means
+ * the moment ffmpeg's encoder can't keep up, the OS pipe fills and that
+ * write call blocks the ENTIRE render loop until ffmpeg drains it -- which
+ * silently caps captured fps at whatever the encoder preset can sustain
+ * (e.g. ~90-120fps for libx264 "medium" at 1080p), even though the game
+ * itself might be capable of 1000+ fps. Decoupling the two means bursts of
+ * fast frames get absorbed by the buffer pool instead of stalling capture,
+ * and pairing this with a much faster preset (see {@link MinemaConfig#encoderPreset},
+ * default "ultrafast") raises the encoder's own sustained ceiling well
+ * past what "medium" could ever hit.
+ *
+ * <p>Reads GL_BGR color (no linearization step, straight passthrough), and
+ * reads from whatever texture id it's given each frame rather than one
  * fixed at startRecording() time, since the real framebuffer's color
- * attachment can be recreated by the game (e.g. on window resize).
+ * attachment can be recreated by the game (e.g. on window resize) -- see
+ * {@link #updateReadTexture(int)}.
  */
 public class RawCaptureRecorder
 {
+    /**
+     * How many host-memory frame buffers exist in the pool -- effectively how many frames of
+     * capture/encode desync this recorder can absorb before the render thread has to wait for
+     * the writer thread to catch up. Higher tolerates bigger encoder stalls (e.g. a keyframe
+     * taking longer to encode) at the cost of more resident memory: at 1080p, rawSize is
+     * ~6.2MB/frame, so 8 buffers is ~50MB, trivial next to typical VRAM/RAM budgets for a
+     * recording session.
+     */
+    private static final int BUFFER_POOL_SIZE = 8;
+
+    /**
+     * Zero-capacity marker buffer used to tell {@link #writeLoop()} to stop, queued by
+     * {@link #stopRecording()}. NOT a real frame -- never written to the channel, only ever
+     * compared by reference (see {@link #writeLoop()}). Deliberately not {@code null}: every
+     * {@code java.util.concurrent.BlockingQueue} implementation (including
+     * {@link ArrayBlockingQueue}) explicitly forbids null elements -- {@code put(null)}/
+     * {@code offer(null)} unconditionally throw {@code NullPointerException} via their own
+     * internal {@code Objects.requireNonNull} check, regardless of queue state. A dedicated
+     * sentinel instance is the queue-safe way to signal "no more real items."
+     */
+    private static final ByteBuffer POISON_PILL = ByteBuffer.allocate(0);
+
     private Process process;
     private WritableByteChannel channel;
-    private boolean recording;
-
-    private ByteBuffer outBuffer;
+    private volatile boolean recording;
 
     private int width;
     private int height;
@@ -53,16 +91,17 @@ public class RawCaptureRecorder
     private int[] pbos;
     private int pboIndex;
 
+    /** Fixed-size pool of reusable direct buffers -- frames the render thread has finished copying into but the writer thread hasn't written yet. */
+    private BlockingQueue<ByteBuffer> freeBuffers;
+    private BlockingQueue<ByteBuffer> pendingWrites;
+    private Thread writerThread;
+    private volatile Exception writerError;
+
     /**
-     * The off-screen capture texture id currently attached to {@link #readFbo}, or 0 to mean
-     * "read the real screen backbuffer" (original behaviour). This is NOT trustworthy as a
-     * long-lived reference -- the off-screen Framebuffer's color attachment can be deleted and
-     * recreated at any point (most notably by {@code MinecraftClient#onResolutionChanged()},
-     * whose {@code Framebuffer#resize()} call unconditionally tears down and rebuilds the color
-     * texture even when the size doesn't actually change). {@link #updateReadTexture(int)} is how
-     * this gets kept in sync -- called once right after the resize that happens at the start of a
-     * custom-resolution recording, and again every captured frame after that as a cheap defensive
-     * measure against any later resize doing the same thing mid-recording.
+     * The off-screen capture texture id to read from instead of FBO 0, or 0
+     * to mean "read the real screen backbuffer" (original behaviour). Set
+     * once at {@link #startRecording(int, int, int)} time by
+     * RawCaptureModule.
      */
     private int readTextureId;
 
@@ -121,6 +160,7 @@ public class RawCaptureRecorder
         this.width = width;
         this.height = height;
         this.readTextureId = colorTextureId;
+        this.writerError = null;
 
         if (colorTextureId != 0)
         {
@@ -138,7 +178,13 @@ public class RawCaptureRecorder
 
         int rawSize = width * height * 3;
 
-        this.outBuffer = MemoryUtil.memAlloc(rawSize);
+        this.freeBuffers = new ArrayBlockingQueue<>(BUFFER_POOL_SIZE);
+        this.pendingWrites = new ArrayBlockingQueue<>(BUFFER_POOL_SIZE);
+
+        for (int i = 0; i < BUFFER_POOL_SIZE; i++)
+        {
+            this.freeBuffers.add(MemoryUtil.memAlloc(rawSize));
+        }
 
         try
         {
@@ -149,13 +195,20 @@ public class RawCaptureRecorder
             Path path = Paths.get(movies.toString());
             String movieName = StringUtils.createTimestampFilename() + "_raw";
             float frameRate = (float) BBSRendering.getVideoFrameRate();
+            String preset = MinemaConfig.INSTANCE.encoderPreset;
+
+            if (preset == null || preset.isBlank())
+            {
+                preset = "ultrafast";
+            }
 
             String params = "-f rawvideo -pix_fmt bgr24 -s %WIDTH%x%HEIGHT% -r %FPS% -i - "
-                    + "-vf vflip -an -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p %NAME%.mp4";
+                    + "-vf vflip -an -c:v libx264 -preset %PRESET% -crf 18 -pix_fmt yuv420p %NAME%.mp4";
 
             params = params.replace("%WIDTH%", String.valueOf(width));
             params = params.replace("%HEIGHT%", String.valueOf(height));
             params = params.replace("%FPS%", String.valueOf(frameRate));
+            params = params.replace("%PRESET%", preset);
             params = params.replace("%NAME%", movieName);
 
             List<String> args = new ArrayList<>();
@@ -207,9 +260,47 @@ public class RawCaptureRecorder
 
             this.channel = Channels.newChannel(os);
             this.recording = true;
+
+            this.writerThread = new Thread(this::writeLoop, "bbs-minema-raw-writer");
+            this.writerThread.setDaemon(true);
+            this.writerThread.start();
         }
         catch (Exception e)
         {
+            e.printStackTrace();
+        }
+    }
+
+    /**
+     * Runs on {@link #writerThread} for the entire recording -- the only place that ever touches
+     * {@link #channel}. Pulls completed frames off {@link #pendingWrites}, writes them (the
+     * actually-slow, potentially-blocking part), then returns the buffer to {@link #freeBuffers}
+     * so the render thread can reuse it. {@link #POISON_PILL} on {@link #pendingWrites} (queued by
+     * {@link #stopRecording()}) is how this loop is told to exit once every real frame ahead of
+     * it has been drained and written -- ensures the tail of the recording isn't silently
+     * dropped.
+     */
+    private void writeLoop()
+    {
+        try
+        {
+            while (true)
+            {
+                ByteBuffer buffer = this.pendingWrites.take();
+
+                if (buffer == POISON_PILL)
+                {
+                    break;
+                }
+
+                this.channel.write(buffer);
+                buffer.clear();
+                this.freeBuffers.put(buffer);
+            }
+        }
+        catch (Exception e)
+        {
+            this.writerError = e;
             e.printStackTrace();
         }
     }
@@ -247,6 +338,31 @@ public class RawCaptureRecorder
             return;
         }
 
+        // Flip this first so recordFrame() (if somehow still being called concurrently) bails
+        // out immediately instead of racing the teardown below.
+        this.recording = false;
+
+        // Tell the writer thread to finish everything already queued, then stop -- not an
+        // abrupt kill, so the tail of the recording isn't lost.
+        try
+        {
+            if (this.pendingWrites != null)
+            {
+                this.pendingWrites.put(POISON_PILL);
+            }
+
+            if (this.writerThread != null)
+            {
+                this.writerThread.join(TimeUnit.MINUTES.toMillis(1));
+            }
+        }
+        catch (InterruptedException ex)
+        {
+            Thread.currentThread().interrupt();
+        }
+
+        this.writerThread = null;
+
         if (this.pbos != null)
         {
             for (int pbo : this.pbos)
@@ -265,11 +381,42 @@ public class RawCaptureRecorder
 
         this.readTextureId = 0;
 
-        if (this.outBuffer != null)
+        // Free every buffer in the pool regardless of which queue it currently sits in --
+        // between freeBuffers and pendingWrites (which should be empty after the join above,
+        // barring the writer thread dying on an exception) every allocated buffer is accounted
+        // for exactly once. POISON_PILL is explicitly skipped -- it's a plain heap buffer, not
+        // one of the MemoryUtil.memAlloc'd pool buffers, and would corrupt native memory (likely
+        // crashing the JVM) if handed to memFree. It should normally already be consumed by
+        // writeLoop() by this point, but if the writer thread died from some other exception
+        // before reaching it, it can still be sitting unconsumed in pendingWrites here.
+        if (this.freeBuffers != null)
         {
-            MemoryUtil.memFree(this.outBuffer);
-            this.outBuffer = null;
+            ByteBuffer buffer;
+
+            while ((buffer = this.freeBuffers.poll()) != null)
+            {
+                if (buffer != POISON_PILL)
+                {
+                    MemoryUtil.memFree(buffer);
+                }
+            }
         }
+
+        if (this.pendingWrites != null)
+        {
+            ByteBuffer buffer;
+
+            while ((buffer = this.pendingWrites.poll()) != null)
+            {
+                if (buffer != POISON_PILL)
+                {
+                    MemoryUtil.memFree(buffer);
+                }
+            }
+        }
+
+        this.freeBuffers = null;
+        this.pendingWrites = null;
 
         try
         {
@@ -299,8 +446,6 @@ public class RawCaptureRecorder
         {
             ex.printStackTrace();
         }
-
-        this.recording = false;
     }
 
     /**
@@ -323,6 +468,14 @@ public class RawCaptureRecorder
      * the wrong size/content entirely in that mode, since WindowMixin has
      * redirected what actually gets presented on-screen to a scaled
      * preview blit, not the full-resolution capture itself.
+     *
+     * <p>The only blocking call left on this (the render) thread is
+     * {@link BlockingQueue#take()} on {@link #freeBuffers} -- which only
+     * actually waits if the writer thread has fallen more than
+     * {@link #BUFFER_POOL_SIZE} frames behind. In the common case a buffer
+     * is already sitting there ready and this returns instantly; the slow
+     * part (the actual pipe write to ffmpeg) happens entirely on
+     * {@link #writerThread} instead, off this thread.
      */
     public void recordFrame()
     {
@@ -350,16 +503,23 @@ public class RawCaptureRecorder
             // just mapped belongs to the *previous* PBO swap.
             if (mappedBuffer != null && this.counter != 0)
             {
-                this.outBuffer.clear();
-                this.outBuffer.put(mappedBuffer);
-                this.outBuffer.flip();
-                this.channel.write(this.outBuffer);
+                ByteBuffer target = this.freeBuffers.take();
+
+                target.clear();
+                target.put(mappedBuffer);
+                target.flip();
+
+                this.pendingWrites.put(target);
             }
 
             GL30.glUnmapBuffer(GL30.GL_PIXEL_PACK_BUFFER);
             GL30.glBindBuffer(GL30.GL_PIXEL_PACK_BUFFER, 0);
 
             this.pboIndex = nextPbo;
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
         }
         catch (Exception e)
         {
