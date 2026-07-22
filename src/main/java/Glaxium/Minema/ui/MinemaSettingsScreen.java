@@ -28,9 +28,11 @@ import java.util.List;
  * views onto the same singleton.
  *
  * <p>Only exposes settings this addon actually has a feature for -- no
- * motion blur, shutter profiles, encoding presets, alpha capture, After
- * Effects camera export, chunk preloading, gamma, or shaderpack switching,
- * since (unlike the standalone mod) none of those exist in this addon. BBS
+ * motion blur, shutter profiles, alpha capture, After Effects camera
+ * export, chunk preloading, gamma, or shaderpack switching, since (unlike
+ * the standalone mod) none of those exist in this addon. Encoder presets
+ * (Default/NVENC/Custom -- see MinemaConfig#EncoderMode)
+ * ARE covered, on the Capturing tab. BBS
  * mod's own settings panel (frame resolution/FPS/output path/ffmpeg args)
  * is intentionally left alone and not duplicated here -- the "Minema
  * Settings" and "Edit settings..." buttons sit side by side in BBS's video
@@ -154,6 +156,28 @@ public final class MinemaSettingsScreen extends Screen
                 "Capture depth pass", v -> { this.config.captureDepth = v; this.config.save(); }));
 
         addField(x, y + 84, 310, "Depth capture distance", Double.toString(this.config.captureDepthDistance));
+
+        // Cycles MinemaConfig#encoderMode -- the exact same field
+        // MinemaSettingsOverlayPanel's own cycle button reads/writes, so
+        // changing it here changes it there too. Rebuilds the tab (via
+        // switchTab, not a plain clearAndInit) so the custom-args field
+        // below appears/disappears immediately, without losing whatever's
+        // currently typed in the depth-distance field above.
+        this.addDrawableChild(ButtonWidget.builder(encoderModeText(), b ->
+        {
+            this.config.cycleEncoderMode();
+            this.switchTab(this.tab);
+        }).dimensions(x, y + 116, 310, 20).build());
+
+        if (this.config.encoderMode == MinemaConfig.EncoderMode.CUSTOM)
+        {
+            addField(x, y + 148, 310, "Custom encoder args (ffmpeg)", this.config.customEncoderArgs);
+        }
+    }
+
+    private Text encoderModeText()
+    {
+        return Text.literal("Encoder: " + this.config.encoderMode.label());
     }
 
     // ---- ENGINE tab: sync + engine speed ----
@@ -228,10 +252,16 @@ public final class MinemaSettingsScreen extends Screen
 
     private void addField(int x, int y, int width, String label, String value)
     {
+        addField(x, y, width, label, value, 16);
+    }
+
+    /** @param maxLength most fields here are short numbers (16 is plenty), but e.g. ffmpeg encoder args need much more room. */
+    private void addField(int x, int y, int width, String label, String value, int maxLength)
+    {
         TextFieldWidget field = new TextFieldWidget(this.textRenderer, x, y + 12, width, 20, Text.literal(label));
 
         field.setText(value);
-        field.setMaxLength(16);
+        field.setMaxLength(maxLength);
         this.fields.add(this.addDrawableChild(field));
         this.fieldLabels.add(label);
     }
@@ -266,6 +296,13 @@ public final class MinemaSettingsScreen extends Screen
                     {
                         this.config.captureDepthDistance = Double.parseDouble(this.fields.get(0).getText().trim());
                         this.config.save();
+                    }
+
+                    // Only present (fields.get(1)) while EncoderMode.CUSTOM is selected -- see
+                    // capturingTab(). A plain string, so no NumberFormatException risk here.
+                    if (this.config.encoderMode == MinemaConfig.EncoderMode.CUSTOM && this.fields.size() > 1)
+                    {
+                        this.config.setCustomEncoderArgs(this.fields.get(1).getText());
                     }
                 }
                 case ENGINE ->
@@ -314,11 +351,12 @@ public final class MinemaSettingsScreen extends Screen
             context.drawTextWithShadow(this.textRenderer, this.fieldLabels.get(i), field.getX(), field.getY() - 10, 0xA0A0A0);
         }
 
-        if (this.tab == Tab.RESOLUTION)
+        if (this.tab == Tab.CAPTURING && this.config.encoderMode == MinemaConfig.EncoderMode.CUSTOM
+                && !this.config.isCustomEncoderValid())
         {
             context.drawCenteredTextWithShadow(this.textRenderer,
-                    Text.literal("Frame limit: -1 = unlimited, otherwise stops recording after that many frames"),
-                    this.width / 2, this.height - 54, 0x808080);
+                    Text.literal("Custom encoder is empty or missing -c:v -- recording will be blocked until fixed"),
+                    this.width / 2, this.height - 54, 0xFF5555);
         }
 
         if (!this.error.getString().isEmpty())

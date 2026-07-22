@@ -102,12 +102,30 @@ public class RawCaptureModule
             return;
         }
 
+        MinemaConfig config = MinemaConfig.INSTANCE;
+
+        // Refuse to even open the ffmpeg process if Custom Encoder is selected but the args box
+        // is empty or missing a codec -- otherwise this would either silently record with
+        // ffmpeg's own default encoder (not what "Custom Encoder" implies) or fail to start at
+        // all with no feedback beyond a .log file nobody's looking at yet.
+        if (config.encoderMode == MinemaConfig.EncoderMode.CUSTOM && !config.isCustomEncoderValid())
+        {
+            MinecraftClient client = MinecraftClient.getInstance();
+
+            if (client.player != null)
+            {
+                client.player.sendMessage(net.minecraft.text.Text.literal(
+                        "BBS Minema: Custom encoder args are empty or missing -c:v -- recording cancelled"), true);
+            }
+
+            return;
+        }
+
         this.serverTicks = 0;
         this.framesCaptured = 0;
 
         MinecraftClient client = MinecraftClient.getInstance();
         Window window = client.getWindow();
-        MinemaConfig config = MinemaConfig.INSTANCE;
 
         boolean useCustomResolution = config.customResolution && window.isFullscreen();
 

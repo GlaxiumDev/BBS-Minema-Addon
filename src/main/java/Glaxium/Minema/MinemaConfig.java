@@ -121,18 +121,50 @@ public class MinemaConfig
     public int frameLimit = -1;
 
     /**
-     * x264 preset passed to ffmpeg in {@link RawCaptureRecorder}. Defaults to "ultrafast" rather
-     * than a quality-oriented preset like "medium" -- this is the single biggest lever on actual
-     * sustained capture framerate, since {@link RawCaptureRecorder} writes raw frames into
-     * ffmpeg's stdin pipe, and once encode throughput can't keep up with incoming frames, that
-     * pipe fills and blocks the writer thread (see RawCaptureRecorder's async writer), which
-     * backpressures all the way to the render thread once the buffer pool runs out of free
-     * slots. "medium" tops out around 90-120fps encoding 1080p on typical hardware; "ultrafast"
-     * commonly reaches several hundred fps to 1000+ depending on resolution/CPU, at the cost of
-     * a larger output file for the same CRF. Any valid libx264 preset name works: ultrafast,
-     * superfast, veryfast, faster, fast, medium, slow, slower, veryslow.
+     * Legacy/unused. Superseded by {@link #encoderMode}/{@link #getEncoderArgs()} below, which
+     * picks a full encoder (codec + preset + quality, not just an x264 preset name) per mode.
+     * Kept only so existing bbs-minema.properties files with this key still parse without error
+     * -- same convention as {@link #rawCaptureMode}.
      */
     public String encoderPreset = "ultrafast";
+
+    /**
+     * The three encoder options exposed by the cycle button in both
+     * {@link Glaxium.Minema.ui.MinemaSettingsScreen} (Shift+F4 -> More settings) and
+     * {@link Glaxium.Minema.ui.MinemaSettingsOverlayPanel} (BBS UI, J) -- both just read/write
+     * this same field, so cycling it in one place changes the other instantly, same two-way sync
+     * every other setting here already has.
+     *
+     * <p>Declaration order IS cycle order (see {@link #cycleEncoderMode()}): DEFAULT -> NVENC ->
+     * CUSTOM -> back to DEFAULT.
+     */
+    public enum EncoderMode
+    {
+        /** Exactly what this addon always recorded with before EncoderMode existed -- libx264/ultrafast/crf18, unchanged. */
+        DEFAULT, NVENC, CUSTOM;
+
+        public String label()
+        {
+            return switch (this)
+            {
+                case DEFAULT -> "Default";
+                case NVENC -> "NVENC (GPU)";
+                case CUSTOM -> "Custom Encoder";
+            };
+        }
+    }
+
+    /** Default is DEFAULT -- the original libx264/ultrafast/crf18 encode, unchanged from before EncoderMode existed. */
+    public EncoderMode encoderMode = EncoderMode.DEFAULT;
+
+    /**
+     * Raw ffmpeg video-encoder args (e.g. {@code -c:v libx264 -preset fast -crf 20}), used
+     * verbatim (split on whitespace) instead of one of the built-in presets when
+     * {@link #encoderMode} is {@link EncoderMode#CUSTOM}. Empty by default -- see
+     * {@link #isCustomEncoderValid()} for what "empty/wrong" means for the purposes of refusing
+     * to start a recording with this selected.
+     */
+    public String customEncoderArgs = "";
 
     public void load()
     {
@@ -177,6 +209,20 @@ public class MinemaConfig
                     props.getProperty("frameLimit", String.valueOf(this.frameLimit))
             );
             this.encoderPreset = props.getProperty("encoderPreset", this.encoderPreset);
+
+            try
+            {
+                this.encoderMode = EncoderMode.valueOf(
+                        props.getProperty("encoderMode", this.encoderMode.name()));
+            }
+            catch (IllegalArgumentException e)
+            {
+                // Unrecognized/corrupt value (e.g. an older/newer version's enum constant) --
+                // fall back to the default rather than failing the whole load() call.
+                this.encoderMode = EncoderMode.DEFAULT;
+            }
+
+            this.customEncoderArgs = props.getProperty("customEncoderArgs", this.customEncoderArgs);
         }
         catch (IOException | NumberFormatException e)
         {
@@ -198,6 +244,8 @@ public class MinemaConfig
         props.setProperty("engineSpeed", String.valueOf(this.engineSpeed));
         props.setProperty("frameLimit", String.valueOf(this.frameLimit));
         props.setProperty("encoderPreset", this.encoderPreset);
+        props.setProperty("encoderMode", this.encoderMode.name());
+        props.setProperty("customEncoderArgs", this.customEncoderArgs);
 
         try
         {
@@ -272,5 +320,69 @@ public class MinemaConfig
     {
         this.encoderPreset = (preset == null || preset.isBlank()) ? "ultrafast" : preset.trim();
         this.save();
+    }
+
+    public void setEncoderMode(EncoderMode mode)
+    {
+        this.encoderMode = mode == null ? EncoderMode.DEFAULT : mode;
+        this.save();
+    }
+
+    /**
+     * Advances {@link #encoderMode} by one, wrapping back to {@link EncoderMode#DEFAULT} after
+     * {@link EncoderMode#CUSTOM} -- this is what both cycle buttons (BBS UI and Shift+F4 -> More
+     * settings) call, so they're always cycling the exact same underlying value.
+     */
+    public void cycleEncoderMode()
+    {
+        EncoderMode[] modes = EncoderMode.values();
+        int next = (this.encoderMode.ordinal() + 1) % modes.length;
+
+        this.encoderMode = modes[next];
+        this.save();
+    }
+
+    public void setCustomEncoderArgs(String args)
+    {
+        this.customEncoderArgs = args == null ? "" : args.trim();
+        this.save();
+    }
+
+    /**
+     * "Wrong/empty" (per {@link EncoderMode#CUSTOM}'s whole reason for existing) means: blank, or
+     * missing an actual {@code -c:v <codec>} pair -- typing e.g. just "-crf 20" with no codec
+     * would otherwise silently fall through to ffmpeg's own default encoder, which isn't really
+     * what "Custom Encoder" is for. Checked by {@link Glaxium.Minema.RawCaptureModule#start()}
+     * before a recording is allowed to start at all while this mode is selected.
+     */
+    public boolean isCustomEncoderValid()
+    {
+        String args = this.customEncoderArgs;
+
+        return args != null && !args.isBlank()
+                && args.toLowerCase(java.util.Locale.ROOT).contains("-c:v");
+    }
+
+    /**
+     * The actual ffmpeg video-encoder args for whatever {@link #encoderMode} is currently
+     * selected, as separate tokens (not one shell-escaped string) ready to append straight onto
+     * the {@code ProcessBuilder} args list in {@link RawCaptureRecorder}.
+     *
+     * <p>NVENC requires an Nvidia GPU with a build of ffmpeg that was compiled with
+     * {@code --enable-nvenc}/{@code --enable-cuda} support; if that's not the case, ffmpeg will
+     * fail to start and the failure will show up in that recording's own .log file next to the
+     * output video, same as any other bad ffmpeg args.
+     */
+    public String[] getEncoderArgs()
+    {
+        return switch (this.encoderMode)
+        {
+            // Exactly the args this addon always used before EncoderMode existed -- unchanged.
+            case DEFAULT -> new String[] { "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18" };
+            case NVENC -> new String[] { "-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "20", "-b:v", "0" };
+            case CUSTOM -> this.isCustomEncoderValid()
+                    ? this.customEncoderArgs.trim().split("\\s+")
+                    : new String[] { "-c:v", "libx264", "-preset", "ultrafast", "-crf", "18" };
+        };
     }
 }

@@ -46,9 +46,10 @@ import java.util.concurrent.TimeUnit;
  * (e.g. ~90-120fps for libx264 "medium" at 1080p), even though the game
  * itself might be capable of 1000+ fps. Decoupling the two means bursts of
  * fast frames get absorbed by the buffer pool instead of stalling capture,
- * and pairing this with a much faster preset (see {@link MinemaConfig#encoderPreset},
- * default "ultrafast") raises the encoder's own sustained ceiling well
- * past what "medium" could ever hit.
+ * and pairing this with a fast encoder (see {@link MinemaConfig#encoderMode}/
+ * {@link MinemaConfig#getEncoderArgs()} -- Default is still libx264/ultrafast/crf18, unchanged
+ * from before EncoderMode existed) raises the encoder's own sustained ceiling well past what
+ * "medium" could ever hit.
  *
  * <p>Reads GL_BGR color (no linearization step, straight passthrough), and
  * reads from whatever texture id it's given each frame rather than one
@@ -195,27 +196,28 @@ public class RawCaptureRecorder
             Path path = Paths.get(movies.toString());
             String movieName = StringUtils.createTimestampFilename() + "_raw";
             float frameRate = (float) BBSRendering.getVideoFrameRate();
-            String preset = MinemaConfig.INSTANCE.encoderPreset;
+            // The actual codec/preset/quality args for whichever MinemaConfig#encoderMode is
+            // currently selected (Balanced/High/Ultra/NVENC/Custom/Potato) -- see
+            // MinemaConfig#getEncoderArgs(). RawCaptureModule#start() already refused to get
+            // this far if CUSTOM is selected with empty/invalid args, so this always returns
+            // something usable.
+            String[] encoderArgs = MinemaConfig.INSTANCE.getEncoderArgs();
 
-            if (preset == null || preset.isBlank())
-            {
-                preset = "ultrafast";
-            }
-
-            String params = "-f rawvideo -pix_fmt bgr24 -s %WIDTH%x%HEIGHT% -r %FPS% -i - "
-                    + "-vf vflip -an -c:v libx264 -preset %PRESET% -crf 18 -pix_fmt yuv420p %NAME%.mp4";
+            String params = "-f rawvideo -pix_fmt bgr24 -s %WIDTH%x%HEIGHT% -r %FPS% -i - -vf vflip -an";
 
             params = params.replace("%WIDTH%", String.valueOf(width));
             params = params.replace("%HEIGHT%", String.valueOf(height));
             params = params.replace("%FPS%", String.valueOf(frameRate));
-            params = params.replace("%PRESET%", preset);
-            params = params.replace("%NAME%", movieName);
 
             List<String> args = new ArrayList<>();
             String encoder = FFMpegUtils.getFFMPEG();
 
             args.add(encoder);
             args.addAll(Arrays.asList(params.split(" ")));
+            args.addAll(Arrays.asList(encoderArgs));
+            args.add("-pix_fmt");
+            args.add("yuv420p");
+            args.add(movieName + ".mp4");
 
             System.out.println("[bbs-minema] Recording raw (full screen) capture with: " + args);
 
