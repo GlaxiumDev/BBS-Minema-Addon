@@ -28,12 +28,12 @@ import java.util.concurrent.TimeUnit;
  * made by {@code BBSMinema} based on the "Generate .wav Audio file" toggle
  * -- see the {@code keepWav} parameter on {@link #muxIntoVideo}.
  *
- * <p>Started/stopped from {@link BBSMinema#onClientTick} alongside
+ * <p>Started/stopped from  alongside
  * everything else that watches {@code VideoRecorder#isRecording()} --
  * matters that this is *not* tied to how recording started (F4 quick-record
  * vs the film editor), it reacts to the shared recording state either way.
  *
- * <p>{@link #captureFrame()} is called from {@link BBSMinema#onWorldRenderLast}
+ * <p>{@link #captureFrame()} is called from
  * on the exact same gate {@code MinemaRecorder} uses for the depth pass, so
  * this addon asks for exactly one frame's worth of audio per frame BBS mod
  * actually captures -- see {@link Glaxium.Minema.mixin.SoundEngineMixin}'s
