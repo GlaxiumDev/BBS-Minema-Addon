@@ -5,11 +5,13 @@ import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
 import mchorse.bbs_mod.ui.film.IUIClipsDelegate;
+import mchorse.bbs_mod.ui.film.UIFilmPanel;
 import mchorse.bbs_mod.ui.film.clips.UIClip;
 import mchorse.bbs_mod.ui.film.utils.keyframes.UIFilmKeyframes;
 import mchorse.bbs_mod.ui.framework.elements.buttons.UIButton;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeEditor;
 import mchorse.bbs_mod.ui.framework.elements.input.keyframes.UIKeyframeSheet;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIAnchorKeyframeFactory;
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
@@ -31,6 +33,7 @@ import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
  */
 public class UIHotbarClip extends UIClip<HotbarClip>
 {
+    public UIButton pickSource;
     public UIButton edit;
     public UIKeyframeEditor keyframes;
 
@@ -48,6 +51,8 @@ public class UIHotbarClip extends UIClip<HotbarClip>
         this.keyframes.view.duration(() -> this.clip.duration.get());
         this.keyframes.setUndoId("hotbar_keyframes");
 
+        this.pickSource = new UIButton(IKey.constant("Pick Source"), (b) -> this.displaySourcePicker());
+
         this.edit = new UIButton(UIKeys.CAMERA_PANELS_EDIT_KEYFRAMES, (b) ->
         {
             this.editor.embedView(this.keyframes);
@@ -57,12 +62,37 @@ public class UIHotbarClip extends UIClip<HotbarClip>
         this.edit.keys().register(Keys.FORMS_EDIT, () -> this.edit.clickItself());
     }
 
+    /**
+     * Opens the same actor/replay picker context menu vanilla's own anchor keyframes use
+     * ({@code UIAnchorKeyframeFactory.displayActors}), listing every actor currently in the
+     * film by index (with a "None" option at the top). Picking one stores its index on
+     * {@code clip.source} and refreshes the panel, which is what makes the "Edit Keyframes"
+     * button appear -- see {@link #fillData()}.
+     */
+    private void displaySourcePicker()
+    {
+        UIFilmPanel panel = this.getParent(UIFilmPanel.class);
+
+        if (panel == null)
+        {
+            return;
+        }
+
+        UIAnchorKeyframeFactory.displayActors(this.getContext(), panel.getController().getEntities(), this.clip.source.get(), this::setSource);
+    }
+
+    private void setSource(int source)
+    {
+        this.clip.source.set(source);
+        this.fillData();
+    }
+
     @Override
     protected void registerPanels()
     {
         super.registerPanels();
 
-        this.panels.add(UI.column(UIClip.label(IKey.constant("Hotbar")), this.edit).marginTop(12));
+        this.panels.add(UI.column(UIClip.label(IKey.constant("Hotbar")), this.pickSource, this.edit).marginTop(12));
     }
 
     @Override
@@ -70,6 +100,10 @@ public class UIHotbarClip extends UIClip<HotbarClip>
     {
         super.fillData();
         this.ensureHardcoreIsBoolean();
+
+        int source = this.clip.source.get();
+
+        this.edit.setVisible(source >= 0);
 
         // Vanilla bbs-mod's UIKeyframeEditor has no setChannels(KeyframeChannel[]) helper (a
         // CML-only addition) and UIKeyframeSheet#title is final, so it has to be supplied at

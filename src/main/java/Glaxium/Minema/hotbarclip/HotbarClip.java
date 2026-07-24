@@ -5,6 +5,7 @@ import mchorse.bbs_mod.camera.data.Position;
 import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.data.types.MapType;
+import mchorse.bbs_mod.settings.values.numeric.ValueInt;
 import mchorse.bbs_mod.utils.clips.Clip;
 import mchorse.bbs_mod.utils.clips.ClipContext;
 import mchorse.bbs_mod.utils.keyframes.Keyframe;
@@ -71,19 +72,32 @@ public class HotbarClip extends CameraClip
 
     public final KeyframeChannel[] channels;
 
+    /**
+     * Index into the film's replays list (same convention as vanilla's own
+     * {@code Anchor#replay} field / {@code UIAnchorKeyframeFactory.displayActors}) of the actor
+     * this clip's "Pick Source" button currently has selected, or {@code -1} if none has been
+     * picked yet. Purely a UI-facing pick right now -- it doesn't drive the keyframes above
+     * automatically, it just remembers the choice and gates whether {@code UIHotbarClip}'s
+     * "Edit Keyframes" button is shown, so the panel doesn't dump raw keyframe controls on
+     * someone before they've told it which actor this hotbar is for.
+     */
+    public final ValueInt source = new ValueInt("source", -1);
+
     public HotbarClip()
     {
         this.channels = new KeyframeChannel[] {
-            this.layout,
-            this.selectedSlot,
-            this.slot0, this.slot1, this.slot2, this.slot3, this.slot4, this.slot5, this.slot6, this.slot7, this.slot8, this.offhandSlot,
-            this.health, this.healthContainer, this.absorption, this.absorptionContainer, this.heartType, this.hardcore, this.heartRegeneration, this.armor, this.hunger, this.hungerEffect, this.air, this.experience, this.experienceLevel,
+                this.layout,
+                this.selectedSlot,
+                this.slot0, this.slot1, this.slot2, this.slot3, this.slot4, this.slot5, this.slot6, this.slot7, this.slot8, this.offhandSlot,
+                this.health, this.healthContainer, this.absorption, this.absorptionContainer, this.heartType, this.hardcore, this.heartRegeneration, this.armor, this.hunger, this.hungerEffect, this.air, this.experience, this.experienceLevel,
         };
 
         for (KeyframeChannel channel : this.channels)
         {
             this.add(channel);
         }
+
+        this.add(this.source);
 
         this.selectedSlot.insert(0, 0);
         this.health.insert(0, 20D);
@@ -110,6 +124,11 @@ public class HotbarClip extends CameraClip
     @Override
     protected void applyClip(ClipContext context, Position position)
     {
+        if (this.source.get() < 0)
+        {
+            return;
+        }
+
         float t = context.relativeTick + context.transition;
         float alpha = this.envelope.factorEnabled(this.duration.get(), t);
 
