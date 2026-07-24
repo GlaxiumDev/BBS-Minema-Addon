@@ -176,7 +176,7 @@ public class UIHotbarRenderer
             wasHeartRegenerationEnabled = false;
         }
 
-        renderBar(batcher, hotbar.health, container, heartHalf, heartFull, 0, barsY, healthSlots, heartShakeRandom, regenerationHeartIndex);
+        renderBar(batcher, hotbar.health, hotbar.lastHealth, container, heartHalf, heartFull, 0, barsY, healthSlots, heartShakeRandom, regenerationHeartIndex, hudTick);
         if (absorptionSlots > 0)
         {
             renderBar(batcher, hotbar.absorption, container, absorptionHalf, absorptionFull, 0, barsY - healthRows * 10, absorptionSlots, heartShakeRandom, -1);
@@ -272,14 +272,43 @@ public class UIHotbarRenderer
         return Math.max(0.05F, Math.min(width / REFERENCE_WIDTH, height / REFERENCE_HEIGHT));
     }
 
+    /** Backward-compatible entry point for bars that never flash (absorption, armor). */
     private static void renderBar(Batcher2D batcher, float value, Identifier empty, Identifier half, Identifier full, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex)
+    {
+        renderBar(batcher, value, value, empty, half, full, x, y, slots, lowHealthShakeRandom, regenerationHeartIndex, 0L);
+    }
+
+    /**
+     * Same as above, but flashes the hearts whose value differs between {@code lastValue} (health
+     * one tick ago) and {@code value} (health now) -- the same visual language vanilla uses when
+     * you take damage or get healed, played continuously for as long as a health keyframe
+     * transition is actively moving the value (e.g. animating 5 -> 20 over several ticks flashes
+     * every heart in that range for the whole transition, not just a single instant).
+     *
+     * <p>The flash itself isn't an alpha fade -- every heart already has a pale "empty container"
+     * sprite drawn underneath its red fill, it's just normally hidden because the fill covers it
+     * completely. The flash works by skipping the fill draw every other phase, letting that pale
+     * outline show through on its own -- which is what actually produces the white/pale heart you
+     * see mid-flash (confirmed by sampling the reference screenshot's pixels).
+     *
+     * <p>This is a from-scratch approximation of vanilla's heart-blink timing (not decompiled 1:1
+     * from InGameHud), tuned to read clearly on camera: a hard on/off flash, 3 ticks per phase.
+     * The cadence is isolated to the constant below if it needs to be faster/slower.
+     */
+    private static void renderBar(Batcher2D batcher, float value, float lastValue, Identifier empty, Identifier half, Identifier full, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex, long hudTick)
     {
         if (slots <= 0)
         {
             return;
         }
 
+        final int FLASH_TICKS_PER_PHASE = 3;
+
         float normalized = MathHelper.clamp(value, 0F, slots * 2F) / 2F;
+        float changeLow = Math.min(value, lastValue);
+        float changeHigh = Math.max(value, lastValue);
+        boolean isChanging = (changeHigh - changeLow) > 0.05F;
+        boolean flashPhaseOn = ((hudTick / FLASH_TICKS_PER_PHASE) % 2L) == 0L;
 
         for (int i = 0; i < slots; i++)
         {
@@ -298,17 +327,25 @@ public class UIHotbarRenderer
                 iconY -= 2;
             }
 
+            /* This heart's HP range is [i*2, i*2+2) -- flash it if that range overlaps the
+             * span between last tick's health and this tick's health. */
+            boolean heartAffected = isChanging && i * 2F < changeHigh && (i * 2F + 2F) > changeLow;
+            boolean showFillThisFrame = !heartAffected || flashPhaseOn;
+
             batcher.getContext().drawGuiTexture(empty, iconX, iconY, 9, 9);
 
-            float current = normalized - i;
+            if (showFillThisFrame)
+            {
+                float current = normalized - i;
 
-            if (current >= 1F)
-            {
-                batcher.getContext().drawGuiTexture(full, iconX, iconY, 9, 9);
-            }
-            else if (current >= 0.5F)
-            {
-                batcher.getContext().drawGuiTexture(half, iconX, iconY, 9, 9);
+                if (current >= 1F)
+                {
+                    batcher.getContext().drawGuiTexture(full, iconX, iconY, 9, 9);
+                }
+                else if (current >= 0.5F)
+                {
+                    batcher.getContext().drawGuiTexture(half, iconX, iconY, 9, 9);
+                }
             }
         }
     }

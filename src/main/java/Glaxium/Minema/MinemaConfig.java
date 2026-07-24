@@ -373,7 +373,7 @@ public class MinemaConfig
      * "Wrong/empty" (per {@link EncoderMode#CUSTOM}'s whole reason for existing) means: blank, or
      * missing an actual {@code -c:v <codec>} pair -- typing e.g. just "-crf 20" with no codec
      * would otherwise silently fall through to ffmpeg's own default encoder, which isn't really
-     * what "Custom Encoder" is for. Checked by {@link Glaxium.Minema.RawCaptureModule#start()}
+     * what "Custom Encoder" is for. Checked by {@link RawCaptureModule#start()}
      * before a recording is allowed to start at all while this mode is selected.
      */
     public boolean isCustomEncoderValid()

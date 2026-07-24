@@ -46,9 +46,9 @@ import java.io.File;
  * with each other: BBS's own "Minema Settings" button inside its video
  * settings panel, the J key anywhere in the dashboard (both open
  * {@link Glaxium.Minema.ui.MinemaSettingsOverlayPanel}, built on BBS's UI
- * framework -- see {@link Glaxium.Minema.MinemaAddonEvents} for the J
+ * framework -- see {@link MinemaAddonEvents} for the J
  * registration), and Shift+F4 out in the world (opens
- * {@link Glaxium.Minema.ui.MinemaQuickCaptureScreen}, a standalone vanilla
+ * {@link MinemaQuickCaptureScreen}, a standalone vanilla
  * {@code Screen} outside BBS's UI entirely, matching how the old standalone
  * BBS-Minema mod's own UI worked). J previously did something different in
  * an earlier version of this addon and was removed; this is a new,

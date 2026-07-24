@@ -24,6 +24,13 @@ public class HotbarState
     public boolean heartRegeneration;
     public boolean hungerEffect;
     public float health;
+    /**
+     * Health one tick earlier on the same keyframe curve (see HotbarClip#applyClip). Used purely
+     * to drive the vanilla-style "hurt/heal flash" on the hearts that changed -- NOT a general
+     * "previous frame" value, so it stays correct even when scrubbing the timeline backwards/
+     * jumping around, unlike a mutable field that only makes sense during forward playback.
+     */
+    public float lastHealth;
     public float healthContainer;
     public float absorption;
     public float absorptionContainer;

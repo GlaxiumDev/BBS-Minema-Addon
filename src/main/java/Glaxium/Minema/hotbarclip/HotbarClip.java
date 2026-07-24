@@ -133,6 +133,7 @@ public class HotbarClip extends CameraClip
         state.offhandItem = this.copyItem(this.offhandSlot.interpolate(t));
         state.healthContainer = this.clampHealthContainer(this.healthContainer.interpolate(t));
         state.health = this.clampHealth(this.health.interpolate(t), state.healthContainer);
+        state.lastHealth = this.resolveLastHealth(t, state.health);
         state.absorptionContainer = this.clampHealthContainer(this.absorptionContainer.interpolate(t));
         state.absorption = this.clampHealth(this.absorption.interpolate(t), state.absorptionContainer);
         state.heartType = this.clampHeartType(this.heartType.interpolate(t));
@@ -155,6 +156,32 @@ public class HotbarClip extends CameraClip
         // vanilla's subtitle rendering. See HotbarState#renderOrder.
 
         getHotbars(context).add(state);
+    }
+
+    /**
+     * Health one tick before {@code t} on this clip's own keyframe curve -- deliberately re-derived
+     * from the curve itself rather than cached from the previous render call, so it stays correct
+     * no matter how the timeline is scrubbed (jumping around, playing backwards, etc.), unlike a
+     * mutable "last seen value" field would. This is what lets the hotbar flash hearts during a
+     * health keyframe transition (e.g. 5 -> 20), the same way vanilla flashes hearts when the
+     * player's real health changes.
+     *
+     * <p>Falls back to {@code currentHealth} (i.e. no flash) if anything about this comes back
+     * non-finite -- safer than risking a flash that's stuck on or a NaN propagating into rendering.
+     */
+    private float resolveLastHealth(float t, float currentHealth)
+    {
+        try
+        {
+            float previousHealthContainer = this.clampHealthContainer(this.healthContainer.interpolate(t - 1F));
+            float previousHealth = this.clampHealth(this.health.interpolate(t - 1F), previousHealthContainer);
+
+            return Float.isFinite(previousHealth) ? previousHealth : currentHealth;
+        }
+        catch (Exception exception)
+        {
+            return currentHealth;
+        }
     }
 
     private ItemStack copyItem(ItemStack stack)
