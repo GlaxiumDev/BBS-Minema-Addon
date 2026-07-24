@@ -11,7 +11,8 @@
     "HideBBSVideoKeybindMixin",
     "MinemaRenderTickCounterMixin",
     "WindowMixin",
-    "StopRecordingOnQuitWorldMixin"
+    "StopRecordingOnQuitWorldMixin",
+    "FramebufferLeakGuardMixin"
   ],
   "injectors": {
     "defaultRequire": 1

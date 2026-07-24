@@ -1,9 +1,6 @@
 package Glaxium.Minema.hotbarclip;
 
-import mchorse.bbs_mod.BBSModClient;
 import mchorse.bbs_mod.camera.clips.CameraClipContext;
-import mchorse.bbs_mod.camera.controller.ICameraController;
-import mchorse.bbs_mod.camera.controller.PlayCameraController;
 import mchorse.bbs_mod.camera.controller.RunnerCameraController;
 import mchorse.bbs_mod.ui.dashboard.UIDashboard;
 import mchorse.bbs_mod.ui.dashboard.panels.UIDashboardPanel;
@@ -20,22 +17,24 @@ import java.util.List;
 
 /**
  * Draws the ported Hotbar camera clip's fake HUD (see HotbarClip/HotbarState/UIHotbarRenderer)
- * whenever a Hotbar clip is actually being evaluated -- either a Film really driving the camera
- * in-world, or just scrubbing/previewing the timeline inside the Film editor itself. This is
- * BBS-Minema-Addon's own addition, kept entirely in this addon's own package -- vanilla bbs-mod
- * has no idea this clip type exists, so nothing in vanilla renders it. Registered independently
- * via the normal, public HudRenderCallback (same event vanilla's own HUD rendering and
- * RecordingOverlay already use -- Fabric allows multiple listeners), so this needed no mixins.
+ * whenever a Hotbar clip is actually being evaluated by the Film editor's own live preview
+ * (scrubbing/previewing the timeline). This is BBS-Minema-Addon's own addition, kept entirely in
+ * this addon's own package -- vanilla bbs-mod has no idea this clip type exists, so nothing in
+ * vanilla renders it. Registered independently via the normal, public HudRenderCallback (same
+ * event vanilla's own HUD rendering and RecordingOverlay already use -- Fabric allows multiple
+ * listeners), so this needed no mixins.
  *
- * <p>Mirrors the two cases vanilla's own {@code BBSRendering#onWorldRenderEnd()} handles for
- * rendering subtitles: (1) {@link PlayCameraController} -- a Film actually driving the camera in
- * the world right now, and (2) the Film editor's own live preview -- the currently open menu is
- * a {@code UIDashboard} showing a {@code UIFilmPanel}, whose {@link RunnerCameraController} is
- * what actually evaluates clips while you scrub/preview the timeline. Both controller types
- * share a public {@code getContext()} (inherited from their common {@code CameraWorkCameraController}
- * base), which is where {@code HotbarClip#applyClip()} will have already populated the "hotbars"
- * list if a Hotbar clip is active in that context -- we just read it back out here, for
- * whichever of the two is actually active.
+ * <p>Deliberately does NOT also render during actual in-world film playback
+ * ({@code PlayCameraController}) -- that was tried and removed. That controller reference doesn't
+ * get cleared just because a different dashboard panel (or an entirely different screen, like the
+ * Morph menu) gets opened afterwards, so keying rendering off "is a PlayCameraController current"
+ * meant the overlay kept getting drawn on top of whatever screen happened to be open later,
+ * regardless of the Film panel no longer being active -- producing visible corruption over other
+ * screens. Gating purely on "is the Film panel the active dashboard panel right now" (see
+ * {@link #resolveActiveContext()}) has no equivalent stale-reference failure mode: the moment you
+ * leave the Film panel, nothing renders, full stop -- at the cost of the overlay intentionally
+ * not appearing during genuine in-world playback, only while actively editing/previewing in the
+ * Film panel itself.
  */
 public final class HotbarClipRenderer
 {
@@ -72,13 +71,15 @@ public final class HotbarClipRenderer
 
     private static CameraClipContext resolveActiveContext()
     {
-        ICameraController current = BBSModClient.getCameraController().getCurrent();
-
-        if (current instanceof PlayCameraController playController)
-        {
-            return playController.getContext();
-        }
-
+        // Only the Film editor's own live preview -- the currently open menu is a UIDashboard
+        // showing a UIFilmPanel specifically. The separate "actually playing in the world"
+        // (PlayCameraController) case has been removed entirely: that controller reference
+        // doesn't get cleared just because a different panel/screen gets opened afterwards, so
+        // keying rendering off it meant the hotbar overlay kept getting drawn on top of whatever
+        // screen happened to be open later (e.g. the Morph menu), regardless of the Film panel
+        // no longer being active. Gating purely on "is the Film panel the active panel right
+        // now" has no equivalent stale-reference failure mode -- the moment you leave the Film
+        // panel, this returns null and nothing renders, full stop.
         UIBaseMenu currentMenu = UIScreen.getCurrentMenu();
 
         if (currentMenu instanceof UIDashboard dashboard)
