@@ -1,11 +1,19 @@
 package Glaxium.Minema;
 
+import Glaxium.Minema.hotbarclip.HotbarClip;
+import Glaxium.Minema.hotbarclip.HotbarClipRenderer;
+import Glaxium.Minema.hotbarclip.UIHotbarClip;
 import Glaxium.Minema.ui.MinemaQuickCaptureScreen;
 import Glaxium.Minema.ui.MinemaSettingsButton;
 import Glaxium.Minema.ui.RecordingOverlay;
+import mchorse.bbs_mod.BBSMod;
 import mchorse.bbs_mod.BBSModClient;
+import mchorse.bbs_mod.camera.clips.ClipFactoryData;
 import mchorse.bbs_mod.client.BBSRendering;
+import mchorse.bbs_mod.resources.Link;
+import mchorse.bbs_mod.ui.film.clips.UIClip;
 import mchorse.bbs_mod.ui.utils.UIUtils;
+import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.StringUtils;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -105,6 +113,17 @@ public class BBSMinema implements ClientModInitializer
 
         MinemaSettingsButton.register();
         RecordingOverlay.register();
+
+        // Ported from BBS-CML-EDITION (doesn't exist in vanilla bbs-mod): registers a new
+        // "Hotbar" camera-clip type into BBS's own Film editor using its own public, already-
+        // used-internally extension points -- no mixins needed for this part. See HotbarClip's
+        // own class doc for the full picture, and HotbarClipRenderer for what actually draws it
+        // during playback (vanilla has no idea this clip type exists, so nothing in vanilla
+        // would render it without that).
+        BBSMod.getFactoryCameraClips().register(new Link("bbs_minema", "hotbar"), HotbarClip.class,
+                new ClipFactoryData(Icons.BLOCK, 0x55aaff));
+        UIClip.register(HotbarClip.class, UIHotbarClip::new);
+        HotbarClipRenderer.register();
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
         WorldRenderEvents.LAST.register(this::onWorldRenderLast);
