@@ -1,6 +1,8 @@
 package Glaxium.Minema.hotbarclip;
 
 import mchorse.bbs_mod.data.types.MapType;
+import mchorse.bbs_mod.film.Film;
+import mchorse.bbs_mod.film.replays.Replay;
 import mchorse.bbs_mod.l10n.keys.IKey;
 import mchorse.bbs_mod.ui.Keys;
 import mchorse.bbs_mod.ui.UIKeys;
@@ -15,6 +17,8 @@ import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIAnchorK
 import mchorse.bbs_mod.ui.utils.UI;
 import mchorse.bbs_mod.utils.keyframes.KeyframeChannel;
 import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
+
+import java.util.List;
 
 /**
  * Ported from BBS-CML-EDITION by BBS-Minema-Addon, kept in this addon's own package -- it only
@@ -34,6 +38,7 @@ import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
 public class UIHotbarClip extends UIClip<HotbarClip>
 {
     public UIButton pickSource;
+    public UIButton bake;
     public UIButton edit;
     public UIKeyframeEditor keyframes;
 
@@ -52,6 +57,7 @@ public class UIHotbarClip extends UIClip<HotbarClip>
         this.keyframes.setUndoId("hotbar_keyframes");
 
         this.pickSource = new UIButton(IKey.constant("Pick Source"), (b) -> this.displaySourcePicker());
+        this.bake = new UIButton(IKey.constant("Bake Keyframes"), (b) -> this.bakeFromSource());
 
         this.edit = new UIButton(UIKeys.CAMERA_PANELS_EDIT_KEYFRAMES, (b) ->
         {
@@ -87,12 +93,55 @@ public class UIHotbarClip extends UIClip<HotbarClip>
         this.fillData();
     }
 
+    /**
+     * Pulls whatever BBS's own replay/actor recording actually captured for the picked source
+     * (see {@link #pickSource}) into this clip's keyframes -- see
+     * {@link HotbarClip#bakeFromReplay} for exactly what that does and doesn't cover right now
+     * (selected slot / held item / offhand; not health, hunger, armor, XP, air -- BBS's replay
+     * recording has no data for those at all yet).
+     *
+     * <p>{@code clip.source} is an index into the film's actor list (same convention as
+     * {@code UIAnchorKeyframeFactory.displayActors}), which lines up with an index into
+     * {@code Film#replays} the same way {@code BBSModClient}'s own Alt-key recording resolves a
+     * replay by index -- so this looks the replay up the same way, rather than going through the
+     * live {@code IEntity} (which doesn't expose the underlying keyframe data to sample from).
+     */
+    private void bakeFromSource()
+    {
+        int source = this.clip.source.get();
+
+        if (source < 0)
+        {
+            return;
+        }
+
+        UIFilmPanel panel = this.getParent(UIFilmPanel.class);
+        Film film = panel == null ? null : panel.getData();
+
+        if (film == null)
+        {
+            return;
+        }
+
+        List<Replay> replays = film.replays.getList();
+
+        if (source >= replays.size())
+        {
+            return;
+        }
+
+        Replay replay = replays.get(source);
+
+        this.clip.bakeFromReplay(replay.keyframes);
+        this.fillData();
+    }
+
     @Override
     protected void registerPanels()
     {
         super.registerPanels();
 
-        this.panels.add(UI.column(UIClip.label(IKey.constant("Hotbar")), this.pickSource, this.edit).marginTop(12));
+        this.panels.add(UI.column(UIClip.label(IKey.constant("Hotbar")), this.pickSource, this.bake, this.edit).marginTop(12));
     }
 
     @Override
@@ -104,6 +153,7 @@ public class UIHotbarClip extends UIClip<HotbarClip>
         int source = this.clip.source.get();
 
         this.edit.setVisible(source >= 0);
+        this.bake.setVisible(source >= 0);
 
         // Vanilla bbs-mod's UIKeyframeEditor has no setChannels(KeyframeChannel[]) helper (a
         // CML-only addition) and UIKeyframeSheet#title is final, so it has to be supplied at

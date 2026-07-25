@@ -5,6 +5,7 @@ import mchorse.bbs_mod.camera.data.Position;
 import mchorse.bbs_mod.data.types.BaseType;
 import mchorse.bbs_mod.data.types.ListType;
 import mchorse.bbs_mod.data.types.MapType;
+import mchorse.bbs_mod.film.replays.ReplayKeyframes;
 import mchorse.bbs_mod.settings.values.numeric.ValueInt;
 import mchorse.bbs_mod.utils.clips.Clip;
 import mchorse.bbs_mod.utils.clips.ClipContext;
@@ -119,6 +120,93 @@ public class HotbarClip extends CameraClip
     public static List<HotbarState> getHotbars(ClipContext context)
     {
         return context.clipData.get("hotbars", ArrayList::new);
+    }
+
+    /**
+     * Fills in this clip's keyframes from a recorded Replay's own data -- see UIHotbarClip's
+     * "Bake Keyframes" button. Only copies what BBS's replay/actor recording actually captures:
+     * {@code selectedSlot} and {@code offHand} copy over directly (same types, so a straight
+     * {@code copyKeyframes} 1:1), and the currently-held item ({@code mainHand}) gets written
+     * into whichever of the 9 slot channels was selected at each recorded tick.
+     *
+     * <p>This deliberately does NOT touch health/hunger/armor/absorption/XP/air/hardcore --
+     * BBS's replay recording has no data for any of those (see {@code IEntity}, which only
+     * exposes position/rotation/equipment/selected-slot, nothing about vitals), so there's
+     * nothing real to bake into those channels. They're left exactly as they were; keyframe them
+     * by hand, or bake them once BBS's own recording is extended to capture that data.
+     *
+     * <p>The other 8 hotbar slots (whichever ISN'T selected at a given recorded tick) also can't
+     * be baked -- BBS's replay only ever tracks the currently-held item, never the other 8 slots
+     * simultaneously, so their prior contents are simply unknown. This clears and only writes
+     * the slot that was actually selected at each recorded tick; every other slot is left empty
+     * for that whole stretch rather than guessing.
+     */
+    public void bakeFromReplay(ReplayKeyframes source)
+    {
+        this.selectedSlot.copyKeyframes(source.selectedSlot);
+        this.offhandSlot.copyKeyframes(source.offHand);
+
+        KeyframeChannel<ItemStack>[] slots = new KeyframeChannel[] {
+                this.slot0, this.slot1, this.slot2, this.slot3, this.slot4, this.slot5, this.slot6, this.slot7, this.slot8,
+        };
+
+        for (KeyframeChannel<ItemStack> slot : slots)
+        {
+            slot.removeAll();
+        }
+
+        TreeSet<Float> ticks = new TreeSet<>();
+
+        for (Keyframe<Integer> keyframe : source.selectedSlot.getKeyframes())
+        {
+            ticks.add(keyframe.getTick());
+        }
+
+        for (Keyframe<ItemStack> keyframe : source.mainHand.getKeyframes())
+        {
+            ticks.add(keyframe.getTick());
+        }
+
+        for (float tick : ticks)
+        {
+            int slotIndex = Math.max(0, Math.min(8, source.selectedSlot.interpolate(tick, 0)));
+            ItemStack heldItem = source.mainHand.interpolate(tick, ItemStack.EMPTY);
+
+            slots[slotIndex].insert(tick, this.copyItem(heldItem));
+        }
+
+        // Every baked channel needs an actual keyframe at tick 0, not just whichever tick the
+        // recording happened to start real changes at -- otherwise a channel whose only
+        // keyframe is, say, "picked up a block at tick 50" would hold that single keyframe's
+        // value across the ENTIRE timeline (keyframe interpolation clamps to the nearest
+        // keyframe outside its range), making the block appear to have been held since tick 0
+        // instead of only from tick 50 onward. Extending the first real value backward to tick 0
+        // (rather than resetting to some arbitrary default) keeps everything before the first
+        // real change exactly as flat/empty as it actually was.
+        this.ensureFirstKeyframeAtZero(this.selectedSlot);
+        this.ensureFirstKeyframeAtZero(this.offhandSlot);
+
+        for (KeyframeChannel<ItemStack> slot : slots)
+        {
+            this.ensureFirstKeyframeAtZero(slot);
+        }
+    }
+
+    private <T> void ensureFirstKeyframeAtZero(KeyframeChannel<T> channel)
+    {
+        List<Keyframe<T>> keyframes = channel.getKeyframes();
+
+        if (keyframes.isEmpty())
+        {
+            return;
+        }
+
+        Keyframe<T> first = keyframes.get(0);
+
+        if (first.getTick() > 0F)
+        {
+            channel.insert(0F, first.getValue());
+        }
     }
 
     @Override
