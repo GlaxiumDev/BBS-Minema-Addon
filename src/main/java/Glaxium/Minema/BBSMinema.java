@@ -3,6 +3,7 @@ package Glaxium.Minema;
 import Glaxium.Minema.hotbarclip.HotbarClip;
 import Glaxium.Minema.hotbarclip.HotbarClipRenderer;
 import Glaxium.Minema.hotbarclip.UIHotbarClip;
+import Glaxium.Minema.hotbarclip.UIHotbarItemKeyframeFactory;
 import Glaxium.Minema.ui.MinemaQuickCaptureScreen;
 import Glaxium.Minema.ui.MinemaSettingsButton;
 import Glaxium.Minema.ui.RecordingOverlay;
@@ -12,9 +13,11 @@ import mchorse.bbs_mod.camera.clips.ClipFactoryData;
 import mchorse.bbs_mod.client.BBSRendering;
 import mchorse.bbs_mod.resources.Link;
 import mchorse.bbs_mod.ui.film.clips.UIClip;
+import mchorse.bbs_mod.ui.framework.elements.input.keyframes.factories.UIKeyframeFactory;
 import mchorse.bbs_mod.ui.utils.UIUtils;
 import mchorse.bbs_mod.ui.utils.icons.Icons;
 import mchorse.bbs_mod.utils.StringUtils;
+import mchorse.bbs_mod.utils.keyframes.factories.KeyframeFactories;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -124,6 +127,12 @@ public class BBSMinema implements ClientModInitializer
                 new ClipFactoryData(Icons.BLOCK, 0x55aaff));
         UIClip.register(HotbarClip.class, UIHotbarClip::new);
         HotbarClipRenderer.register();
+
+        // Replaces vanilla's own ItemStack keyframe editor widget with one that also has a
+        // count field (vanilla's has no way to set stack count at all -- see
+        // UIHotbarItemKeyframeFactory's own class doc). Applies to every ItemStack keyframe in
+        // BBS's Film editor, not just Hotbar clips, since it's a strict addition.
+        UIKeyframeFactory.register(KeyframeFactories.ITEM_STACK, UIHotbarItemKeyframeFactory::new);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
         WorldRenderEvents.LAST.register(this::onWorldRenderLast);

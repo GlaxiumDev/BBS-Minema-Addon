@@ -183,12 +183,23 @@ public class HotbarClip extends CameraClip
         // instead of only from tick 50 onward. Extending the first real value backward to tick 0
         // (rather than resetting to some arbitrary default) keeps everything before the first
         // real change exactly as flat/empty as it actually was.
+        //
+        // Same reasoning at the other end: without an explicit keyframe at the clip's last tick,
+        // whatever the LAST recorded change was would clamp forward and appear to hold all the
+        // way to the end of the clip too, even past however long that item was actually held for
+        // in the source recording. Holding the last real value through to the clip's actual last
+        // tick keeps the tail end honest instead of silently extending it.
+        float lastTick = Math.max(0F, this.duration.get() - 1);
+
         this.ensureFirstKeyframeAtZero(this.selectedSlot);
+        this.ensureLastKeyframeAtEnd(this.selectedSlot, lastTick);
         this.ensureFirstKeyframeAtZero(this.offhandSlot);
+        this.ensureLastKeyframeAtEnd(this.offhandSlot, lastTick);
 
         for (KeyframeChannel<ItemStack> slot : slots)
         {
             this.ensureFirstKeyframeAtZero(slot);
+            this.ensureLastKeyframeAtEnd(slot, lastTick);
         }
     }
 
@@ -206,6 +217,23 @@ public class HotbarClip extends CameraClip
         if (first.getTick() > 0F)
         {
             channel.insert(0F, first.getValue());
+        }
+    }
+
+    private <T> void ensureLastKeyframeAtEnd(KeyframeChannel<T> channel, float lastTick)
+    {
+        List<Keyframe<T>> keyframes = channel.getKeyframes();
+
+        if (keyframes.isEmpty())
+        {
+            return;
+        }
+
+        Keyframe<T> last = keyframes.get(keyframes.size() - 1);
+
+        if (last.getTick() < lastTick)
+        {
+            channel.insert(lastTick, last.getValue());
         }
     }
 
