@@ -69,6 +69,7 @@ public class HotbarClip extends CameraClip
     public final KeyframeChannel<Double> air = new KeyframeChannel<>("air", KeyframeFactories.DOUBLE);
     public final KeyframeChannel<Double> experience = new KeyframeChannel<>("experience", KeyframeFactories.DOUBLE);
     public final KeyframeChannel<Integer> experienceLevel = new KeyframeChannel<>("experience_level", KeyframeFactories.INTEGER);
+    public final KeyframeChannel<Double> heartFlash = new KeyframeChannel<>("heart_flash", KeyframeFactories.DOUBLE);
     public final KeyframeChannel<Vector4f> layout = new KeyframeChannel<>("layout", KeyframeFactories.VECTOR4F);
 
     public final KeyframeChannel[] channels;
@@ -90,7 +91,7 @@ public class HotbarClip extends CameraClip
                 this.layout,
                 this.selectedSlot,
                 this.slot0, this.slot1, this.slot2, this.slot3, this.slot4, this.slot5, this.slot6, this.slot7, this.slot8, this.offhandSlot,
-                this.health, this.healthContainer, this.absorption, this.absorptionContainer, this.heartType, this.hardcore, this.heartRegeneration, this.armor, this.hunger, this.hungerEffect, this.air, this.experience, this.experienceLevel,
+                this.health, this.healthContainer, this.absorption, this.absorptionContainer, this.heartType, this.hardcore, this.heartRegeneration, this.armor, this.hunger, this.hungerEffect, this.air, this.experience, this.experienceLevel, this.heartFlash,
         };
 
         for (KeyframeChannel channel : this.channels)
@@ -114,6 +115,7 @@ public class HotbarClip extends CameraClip
         this.air.insert(0, 300D);
         this.experience.insert(0, 0D);
         this.experienceLevel.insert(0, 0);
+        this.heartFlash.insert(0, 0D);
         this.layout.insert(0, new Vector4f(0F, 0F, 1F, 0F));
     }
 
@@ -174,6 +176,7 @@ public class HotbarClip extends CameraClip
                 this.air.copyKeyframes(hud.air);
                 this.experience.copyKeyframes(hud.experience);
                 this.experienceLevel.copyKeyframes(hud.experienceLevel);
+                this.heartFlash.copyKeyframes(hud.heartFlash);
                 return;
             }
         }
@@ -301,6 +304,7 @@ public class HotbarClip extends CameraClip
         state.air = this.clampAir(this.air.interpolate(t));
         state.experience = this.clampExperience(this.experience.interpolate(t));
         state.experienceLevel = this.clampExperienceLevel(this.experienceLevel.interpolate(t));
+        state.heartFlash = Math.max(0F, this.heartFlash.interpolate(t, 0D).floatValue());
         Vector4f layout = this.layout.interpolate(t, new Vector4f(0F, 0F, 1F, 0F));
         state.x = layout.x;
         state.y = layout.y;

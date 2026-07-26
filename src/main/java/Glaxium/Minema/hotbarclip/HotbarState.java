@@ -39,6 +39,13 @@ public class HotbarState
     public float air;
     public float experience;
     public int experienceLevel;
+    /**
+     * Baked {@code heart_flash} value for this frame (from the recorded {@code hurtTime} timer,
+     * see RecordedHotbarData#record): 0 = off, 1..10 = active white hurt-flash strength/timer.
+     * See UIHotbarRenderer#renderBar, which forces every rendered heart to blink for as long as
+     * this is above 0.
+     */
+    public float heartFlash;
     public float x;
     public float y;
     public float scale;

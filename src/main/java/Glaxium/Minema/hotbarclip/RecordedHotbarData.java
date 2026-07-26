@@ -22,6 +22,14 @@ public final class RecordedHotbarData {
     public final KeyframeChannel air = channel("air", KeyframeFactories.DOUBLE);
     public final KeyframeChannel experience = channel("experience", KeyframeFactories.DOUBLE);
     public final KeyframeChannel experienceLevel = channel("experience_level", KeyframeFactories.INTEGER);
+    /**
+     * Real hurt-flash timer straight from {@code LivingEntity#hurtTime}, which vanilla counts
+     * down from {@code maxHurtTime} (10) every time the player takes damage -- the same value
+     * that drives vanilla's own white hurt overlay/heart wobble. Recording it 1:1 means the
+     * baked keyframe curve reproduces exactly when and for how long the player was flashing,
+     * instead of needing it hand-keyframed afterward.
+     */
+    public final KeyframeChannel heartFlash = channel("heart_flash", KeyframeFactories.DOUBLE);
 
     private static KeyframeChannel channel(String id, IKeyframeFactory factory) {
         return new KeyframeChannel("hotbar_" + id, factory);
@@ -35,7 +43,7 @@ public final class RecordedHotbarData {
         for (KeyframeChannel channel : slots) group.add(channel);
         group.add(health); group.add(healthContainer); group.add(absorption); group.add(absorptionContainer);
         group.add(heartType); group.add(hardcore); group.add(regeneration); group.add(armor); group.add(hunger);
-        group.add(hungerEffect); group.add(air); group.add(experience); group.add(experienceLevel);
+        group.add(hungerEffect); group.add(air); group.add(experience); group.add(experienceLevel); group.add(heartFlash);
     }
 
     public boolean hasData() {
@@ -50,8 +58,8 @@ public final class RecordedHotbarData {
         absorption.insert(tick, absorptionValue);
         absorptionContainer.insert(tick, absorptionValue);
         int type = player.hasStatusEffect(StatusEffects.POISON) ? HotbarState.HEART_POISONED
-            : player.hasStatusEffect(StatusEffects.WITHER) ? HotbarState.HEART_WITHERED
-            : player.isFrozen() ? HotbarState.HEART_FROZEN : HotbarState.HEART_NORMAL;
+                : player.hasStatusEffect(StatusEffects.WITHER) ? HotbarState.HEART_WITHERED
+                  : player.isFrozen() ? HotbarState.HEART_FROZEN : HotbarState.HEART_NORMAL;
         heartType.insert(tick, type);
         hardcore.insert(tick, player.getWorld().getLevelProperties().isHardcore());
         regeneration.insert(tick, player.hasStatusEffect(StatusEffects.REGENERATION));
@@ -61,5 +69,6 @@ public final class RecordedHotbarData {
         air.insert(tick, (double) Math.max(0, Math.min(300, player.getAir())));
         experience.insert(tick, (double) player.experienceProgress);
         experienceLevel.insert(tick, player.experienceLevel);
+        heartFlash.insert(tick, (double) Math.max(0, player.hurtTime));
     }
 }

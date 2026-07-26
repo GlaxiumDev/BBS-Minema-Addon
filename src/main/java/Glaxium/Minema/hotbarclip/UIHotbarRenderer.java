@@ -39,19 +39,43 @@ public class UIHotbarRenderer
     private static final Identifier HOTBAR_OFFHAND_LEFT = Identifier.of("minecraft", "hud/hotbar_offhand_left");
     private static final Identifier HEART_CONTAINER = Identifier.of("minecraft", "hud/heart/container");
     private static final Identifier HEART_HARDCORE_CONTAINER = Identifier.of("minecraft", "hud/heart/container_hardcore");
+    /**
+     * Vanilla's real hurt-flash sprites -- a white-outlined container and a lighter/pinker heart
+     * fill, swapped in during the "on" phase of the blink instead of the normal red heart +
+     * black-outlined container (confirmed by sampling the actual sprite pixels: container is
+     * black (0,0,0) vs container_blinking is white (255,255,255); full is red (255,19,19) vs
+     * full_blinking is a lighter pink (255,161,161)). This is what produces the actual white
+     * flash effect, as opposed to merely hiding the fill to reveal the pale container underneath.
+     */
+    private static final Identifier HEART_CONTAINER_BLINKING = Identifier.of("minecraft", "hud/heart/container_blinking");
+    private static final Identifier HEART_HARDCORE_CONTAINER_BLINKING = Identifier.of("minecraft", "hud/heart/container_hardcore_blinking");
     private static final Identifier[][] HEART_HALVES = {
-        {Identifier.of("minecraft", "hud/heart/half"), Identifier.of("minecraft", "hud/heart/hardcore_half")},
-        {Identifier.of("minecraft", "hud/heart/poisoned_half"), Identifier.of("minecraft", "hud/heart/poisoned_hardcore_half")},
-        {Identifier.of("minecraft", "hud/heart/withered_half"), Identifier.of("minecraft", "hud/heart/withered_hardcore_half")},
-        {Identifier.of("minecraft", "hud/heart/absorbing_half"), Identifier.of("minecraft", "hud/heart/absorbing_hardcore_half")},
-        {Identifier.of("minecraft", "hud/heart/frozen_half"), Identifier.of("minecraft", "hud/heart/frozen_hardcore_half")}
+            {Identifier.of("minecraft", "hud/heart/half"), Identifier.of("minecraft", "hud/heart/hardcore_half")},
+            {Identifier.of("minecraft", "hud/heart/poisoned_half"), Identifier.of("minecraft", "hud/heart/poisoned_hardcore_half")},
+            {Identifier.of("minecraft", "hud/heart/withered_half"), Identifier.of("minecraft", "hud/heart/withered_hardcore_half")},
+            {Identifier.of("minecraft", "hud/heart/absorbing_half"), Identifier.of("minecraft", "hud/heart/absorbing_hardcore_half")},
+            {Identifier.of("minecraft", "hud/heart/frozen_half"), Identifier.of("minecraft", "hud/heart/frozen_hardcore_half")}
     };
     private static final Identifier[][] HEART_FULLS = {
-        {Identifier.of("minecraft", "hud/heart/full"), Identifier.of("minecraft", "hud/heart/hardcore_full")},
-        {Identifier.of("minecraft", "hud/heart/poisoned_full"), Identifier.of("minecraft", "hud/heart/poisoned_hardcore_full")},
-        {Identifier.of("minecraft", "hud/heart/withered_full"), Identifier.of("minecraft", "hud/heart/withered_hardcore_full")},
-        {Identifier.of("minecraft", "hud/heart/absorbing_full"), Identifier.of("minecraft", "hud/heart/absorbing_hardcore_full")},
-        {Identifier.of("minecraft", "hud/heart/frozen_full"), Identifier.of("minecraft", "hud/heart/frozen_hardcore_full")}
+            {Identifier.of("minecraft", "hud/heart/full"), Identifier.of("minecraft", "hud/heart/hardcore_full")},
+            {Identifier.of("minecraft", "hud/heart/poisoned_full"), Identifier.of("minecraft", "hud/heart/poisoned_hardcore_full")},
+            {Identifier.of("minecraft", "hud/heart/withered_full"), Identifier.of("minecraft", "hud/heart/withered_hardcore_full")},
+            {Identifier.of("minecraft", "hud/heart/absorbing_full"), Identifier.of("minecraft", "hud/heart/absorbing_hardcore_full")},
+            {Identifier.of("minecraft", "hud/heart/frozen_full"), Identifier.of("minecraft", "hud/heart/frozen_hardcore_full")}
+    };
+    private static final Identifier[][] HEART_HALVES_BLINKING = {
+            {Identifier.of("minecraft", "hud/heart/half_blinking"), Identifier.of("minecraft", "hud/heart/hardcore_half_blinking")},
+            {Identifier.of("minecraft", "hud/heart/poisoned_half_blinking"), Identifier.of("minecraft", "hud/heart/poisoned_hardcore_half_blinking")},
+            {Identifier.of("minecraft", "hud/heart/withered_half_blinking"), Identifier.of("minecraft", "hud/heart/withered_hardcore_half_blinking")},
+            {Identifier.of("minecraft", "hud/heart/absorbing_half_blinking"), Identifier.of("minecraft", "hud/heart/absorbing_hardcore_half_blinking")},
+            {Identifier.of("minecraft", "hud/heart/frozen_half_blinking"), Identifier.of("minecraft", "hud/heart/frozen_hardcore_half_blinking")}
+    };
+    private static final Identifier[][] HEART_FULLS_BLINKING = {
+            {Identifier.of("minecraft", "hud/heart/full_blinking"), Identifier.of("minecraft", "hud/heart/hardcore_full_blinking")},
+            {Identifier.of("minecraft", "hud/heart/poisoned_full_blinking"), Identifier.of("minecraft", "hud/heart/poisoned_hardcore_full_blinking")},
+            {Identifier.of("minecraft", "hud/heart/withered_full_blinking"), Identifier.of("minecraft", "hud/heart/withered_hardcore_full_blinking")},
+            {Identifier.of("minecraft", "hud/heart/absorbing_full_blinking"), Identifier.of("minecraft", "hud/heart/absorbing_hardcore_full_blinking")},
+            {Identifier.of("minecraft", "hud/heart/frozen_full_blinking"), Identifier.of("minecraft", "hud/heart/frozen_hardcore_full_blinking")}
     };
     private static final Identifier ARMOR_EMPTY = Identifier.of("minecraft", "hud/armor_empty");
     private static final Identifier ARMOR_FULL = Identifier.of("minecraft", "hud/armor_full");
@@ -144,6 +168,9 @@ public class UIHotbarRenderer
         Identifier container = hotbar.hardcore ? HEART_HARDCORE_CONTAINER : HEART_CONTAINER;
         Identifier heartHalf = HEART_HALVES[heartType][hardcore];
         Identifier heartFull = HEART_FULLS[heartType][hardcore];
+        Identifier containerBlinking = hotbar.hardcore ? HEART_HARDCORE_CONTAINER_BLINKING : HEART_CONTAINER_BLINKING;
+        Identifier heartHalfBlinking = HEART_HALVES_BLINKING[heartType][hardcore];
+        Identifier heartFullBlinking = HEART_FULLS_BLINKING[heartType][hardcore];
         Identifier absorptionHalf = HEART_HALVES[HotbarState.HEART_ABSORBING][hardcore];
         Identifier absorptionFull = HEART_FULLS[HotbarState.HEART_ABSORBING][hardcore];
         int healthSlots = MathHelper.ceil(MathHelper.clamp(hotbar.healthContainer, 0F, MAX_HEALTH_CONTAINER) / 2F);
@@ -156,6 +183,7 @@ public class UIHotbarRenderer
         Random hungerShakeRandom = hotbar.hunger <= 6F ? new Random(thisTickSeed() + 17L) : null;
         int regenerationHeartIndex = -1;
         long hudTick = currentHudTick();
+        float heartFlash = Math.max(0F, hotbar.heartFlash);
 
         if (hotbar.heartRegeneration && healthSlots > 0 && hotbar.health > 0F)
         {
@@ -176,7 +204,7 @@ public class UIHotbarRenderer
             wasHeartRegenerationEnabled = false;
         }
 
-        renderBar(batcher, hotbar.health, hotbar.lastHealth, container, heartHalf, heartFull, 0, barsY, healthSlots, heartShakeRandom, regenerationHeartIndex, hudTick);
+        renderBar(batcher, hotbar.health, hotbar.lastHealth, heartFlash, container, heartHalf, heartFull, containerBlinking, heartHalfBlinking, heartFullBlinking, 0, barsY, healthSlots, heartShakeRandom, regenerationHeartIndex, hudTick);
         if (absorptionSlots > 0)
         {
             renderBar(batcher, hotbar.absorption, container, absorptionHalf, absorptionFull, 0, barsY - healthRows * 10, absorptionSlots, heartShakeRandom, -1);
@@ -275,7 +303,7 @@ public class UIHotbarRenderer
     /** Backward-compatible entry point for bars that never flash (absorption, armor). */
     private static void renderBar(Batcher2D batcher, float value, Identifier empty, Identifier half, Identifier full, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex)
     {
-        renderBar(batcher, value, value, empty, half, full, x, y, slots, lowHealthShakeRandom, regenerationHeartIndex, 0L);
+        renderBar(batcher, value, value, 0F, empty, half, full, empty, half, full, x, y, slots, lowHealthShakeRandom, regenerationHeartIndex, 0L);
     }
 
     /**
@@ -285,17 +313,26 @@ public class UIHotbarRenderer
      * transition is actively moving the value (e.g. animating 5 -> 20 over several ticks flashes
      * every heart in that range for the whole transition, not just a single instant).
      *
-     * <p>The flash itself isn't an alpha fade -- every heart already has a pale "empty container"
-     * sprite drawn underneath its red fill, it's just normally hidden because the fill covers it
-     * completely. The flash works by skipping the fill draw every other phase, letting that pale
-     * outline show through on its own -- which is what actually produces the white/pale heart you
-     * see mid-flash (confirmed by sampling the reference screenshot's pixels).
+     * <p>The flash isn't an alpha fade or a hidden fill -- it swaps in vanilla's own dedicated
+     * "blinking" sprites (a white-outlined container plus a lighter/pinker heart fill) in place
+     * of the normal black-outlined container and red fill, alternating every phase. That's what
+     * actually produces the white flash you see during a vanilla hurt animation.
+     *
+     * <p>Only the hearts actually taking the damage flash -- i.e. whose HP range overlaps the
+     * span between {@code lastValue} and {@code value} -- not the whole bar. Hearts outside that
+     * range keep rendering normally the whole time.
      *
      * <p>This is a from-scratch approximation of vanilla's heart-blink timing (not decompiled 1:1
      * from InGameHud), tuned to read clearly on camera: a hard on/off flash, 3 ticks per phase.
      * The cadence is isolated to the constant below if it needs to be faster/slower.
+     *
+     * <p>{@code heartFlash} is a second, independent trigger for the same blink, driven by the
+     * baked {@code heart_flash} keyframe curve rather than a health change: when it's above 0,
+     * every currently rendered heart flashes for as long as the curve holds it there (since there's
+     * no specific "changed range" to scope it to), regardless of whether health is actually
+     * changing this frame.
      */
-    private static void renderBar(Batcher2D batcher, float value, float lastValue, Identifier empty, Identifier half, Identifier full, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex, long hudTick)
+    private static void renderBar(Batcher2D batcher, float value, float lastValue, float heartFlash, Identifier empty, Identifier half, Identifier full, Identifier emptyBlinking, Identifier halfBlinking, Identifier fullBlinking, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex, long hudTick)
     {
         if (slots <= 0)
         {
@@ -307,7 +344,7 @@ public class UIHotbarRenderer
         float normalized = MathHelper.clamp(value, 0F, slots * 2F) / 2F;
         float changeLow = Math.min(value, lastValue);
         float changeHigh = Math.max(value, lastValue);
-        boolean isChanging = (changeHigh - changeLow) > 0.05F;
+        boolean isDamageChanging = (changeHigh - changeLow) > 0.05F;
         boolean flashPhaseOn = ((hudTick / FLASH_TICKS_PER_PHASE) % 2L) == 0L;
 
         for (int i = 0; i < slots; i++)
@@ -327,25 +364,26 @@ public class UIHotbarRenderer
                 iconY -= 2;
             }
 
-            /* This heart's HP range is [i*2, i*2+2) -- flash it if that range overlaps the
-             * span between last tick's health and this tick's health. */
-            boolean heartAffected = isChanging && i * 2F < changeHigh && (i * 2F + 2F) > changeLow;
-            boolean showFillThisFrame = !heartAffected || flashPhaseOn;
+            /* This heart's HP range is [i*2, i*2+2) -- only flash it if that range overlaps the
+             * span between last tick's health and this tick's health (a real damage/heal change),
+             * or if the baked heart_flash curve is manually forcing every heart to flash. */
+            boolean heartAffected = heartFlash > 0F || (isDamageChanging && i * 2F < changeHigh && (i * 2F + 2F) > changeLow);
+            boolean blinking = heartAffected && !flashPhaseOn;
+            Identifier emptyToDraw = blinking ? emptyBlinking : empty;
+            Identifier fullToDraw = blinking ? fullBlinking : full;
+            Identifier halfToDraw = blinking ? halfBlinking : half;
 
-            batcher.getContext().drawGuiTexture(empty, iconX, iconY, 9, 9);
+            batcher.getContext().drawGuiTexture(emptyToDraw, iconX, iconY, 9, 9);
 
-            if (showFillThisFrame)
+            float current = normalized - i;
+
+            if (current >= 1F)
             {
-                float current = normalized - i;
-
-                if (current >= 1F)
-                {
-                    batcher.getContext().drawGuiTexture(full, iconX, iconY, 9, 9);
-                }
-                else if (current >= 0.5F)
-                {
-                    batcher.getContext().drawGuiTexture(half, iconX, iconY, 9, 9);
-                }
+                batcher.getContext().drawGuiTexture(fullToDraw, iconX, iconY, 9, 9);
+            }
+            else if (current >= 0.5F)
+            {
+                batcher.getContext().drawGuiTexture(halfToDraw, iconX, iconY, 9, 9);
             }
         }
     }
