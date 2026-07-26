@@ -12,9 +12,9 @@
     "MinemaRenderTickCounterMixin",
     "WindowMixin",
     "StopRecordingOnQuitWorldMixin",
-    "FramebufferLeakGuardMixin"
+    "FramebufferLeakGuardMixin",
+    "ReplayKeyframesHotbarMixin",
+    "RecorderHotbarMixin"
   ],
-  "injectors": {
-    "defaultRequire": 1
-  }
+  "injectors": { "defaultRequire": 1 }
 }

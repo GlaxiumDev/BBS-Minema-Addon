@@ -146,33 +146,54 @@ public class HotbarClip extends CameraClip
         this.selectedSlot.copyKeyframes(source.selectedSlot);
         this.offhandSlot.copyKeyframes(source.offHand);
 
-        KeyframeChannel<ItemStack>[] slots = new KeyframeChannel[] {
-                this.slot0, this.slot1, this.slot2, this.slot3, this.slot4, this.slot5, this.slot6, this.slot7, this.slot8,
+        if (source instanceof Glaxium.Minema.hotbarclip.ReplayKeyframesHotbarAccess access)
+        {
+            Glaxium.Minema.hotbarclip.RecordedHotbarData hud = access.bbsMinema$getHotbar();
+
+            if (hud != null && hud.hasData())
+            {
+                this.slot0.copyKeyframes(hud.slots[0]);
+                this.slot1.copyKeyframes(hud.slots[1]);
+                this.slot2.copyKeyframes(hud.slots[2]);
+                this.slot3.copyKeyframes(hud.slots[3]);
+                this.slot4.copyKeyframes(hud.slots[4]);
+                this.slot5.copyKeyframes(hud.slots[5]);
+                this.slot6.copyKeyframes(hud.slots[6]);
+                this.slot7.copyKeyframes(hud.slots[7]);
+                this.slot8.copyKeyframes(hud.slots[8]);
+                this.health.copyKeyframes(hud.health);
+                this.healthContainer.copyKeyframes(hud.healthContainer);
+                this.absorption.copyKeyframes(hud.absorption);
+                this.absorptionContainer.copyKeyframes(hud.absorptionContainer);
+                this.heartType.copyKeyframes(hud.heartType);
+                this.hardcore.copyKeyframes(hud.hardcore);
+                this.heartRegeneration.copyKeyframes(hud.regeneration);
+                this.armor.copyKeyframes(hud.armor);
+                this.hunger.copyKeyframes(hud.hunger);
+                this.hungerEffect.copyKeyframes(hud.hungerEffect);
+                this.air.copyKeyframes(hud.air);
+                this.experience.copyKeyframes(hud.experience);
+                this.experienceLevel.copyKeyframes(hud.experienceLevel);
+                return;
+            }
+        }
+
+        KeyframeChannel[] slots = {
+                this.slot0, this.slot1, this.slot2, this.slot3, this.slot4,
+                this.slot5, this.slot6, this.slot7, this.slot8
         };
 
-        for (KeyframeChannel<ItemStack> slot : slots)
-        {
-            slot.removeAll();
-        }
+        for (KeyframeChannel slot : slots) slot.removeAll();
 
         TreeSet<Float> ticks = new TreeSet<>();
-
-        for (Keyframe<Integer> keyframe : source.selectedSlot.getKeyframes())
-        {
-            ticks.add(keyframe.getTick());
-        }
-
-        for (Keyframe<ItemStack> keyframe : source.mainHand.getKeyframes())
-        {
-            ticks.add(keyframe.getTick());
-        }
+        for (Keyframe keyframe : source.selectedSlot.getKeyframes()) ticks.add(keyframe.getTick());
+        for (Keyframe keyframe : source.mainHand.getKeyframes()) ticks.add(keyframe.getTick());
 
         for (float tick : ticks)
         {
-            int slotIndex = Math.max(0, Math.min(8, source.selectedSlot.interpolate(tick, 0)));
-            ItemStack heldItem = source.mainHand.interpolate(tick, ItemStack.EMPTY);
-
-            slots[slotIndex].insert(tick, this.copyItem(heldItem));
+            int index = Math.max(0, Math.min(8, source.selectedSlot.interpolate(tick, 0)));
+            ItemStack item = source.mainHand.interpolate(tick, ItemStack.EMPTY);
+            slots[index].insert(tick, item == null ? ItemStack.EMPTY : item.copy());
         }
 
         // Every baked channel needs an actual keyframe at tick 0, not just whichever tick the
