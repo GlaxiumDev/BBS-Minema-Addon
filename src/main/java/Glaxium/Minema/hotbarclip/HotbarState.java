@@ -31,6 +31,23 @@ public class HotbarState
      * jumping around, unlike a mutable field that only makes sense during forward playback.
      */
     public float lastHealth;
+
+    /**
+     * Lowest and highest {@code health} value seen over the last {@link HotbarClip#HEAL_FLASH_WINDOW_TICKS}
+     * ticks (including now) -- a sustained rolling window, not a single-tick comparison against
+     * {@link #lastHealth}. Used to decide BOTH whether a flash should be showing at all right now, and
+     * which specific hearts (whose HP band overlaps [recentHealthLow, recentHealthHigh]) it applies to
+     * -- real vanilla only ever flashes the hearts actually within the range that changed, for damage
+     * AND healing alike; it does not flash the whole bar in either direction. A raw "value >
+     * lastHealth this exact tick" check was only ever true for the one or two ticks where the health
+     * curve actually crosses, far shorter than one full on/off blink cycle and with no memory of which
+     * HP range was involved -- this rolling window fixes both problems at once.
+     */
+    public float recentHealthLow;
+
+    /** @see #recentHealthLow */
+    public float recentHealthHigh;
+
     public float healthContainer;
     public float absorption;
     public float absorptionContainer;

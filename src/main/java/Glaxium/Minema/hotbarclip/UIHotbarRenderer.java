@@ -204,7 +204,7 @@ public class UIHotbarRenderer
             wasHeartRegenerationEnabled = false;
         }
 
-        renderBar(batcher, hotbar.health, hotbar.lastHealth, heartFlash, container, heartHalf, heartFull, containerBlinking, heartHalfBlinking, heartFullBlinking, 0, barsY, healthSlots, heartShakeRandom, regenerationHeartIndex, hudTick);
+        renderBar(batcher, hotbar.health, hotbar.recentHealthLow, hotbar.recentHealthHigh, heartFlash, container, heartHalf, heartFull, containerBlinking, heartHalfBlinking, heartFullBlinking, 0, barsY, healthSlots, heartShakeRandom, regenerationHeartIndex, hudTick);
         if (absorptionSlots > 0)
         {
             renderBar(batcher, hotbar.absorption, container, absorptionHalf, absorptionFull, 0, barsY - healthRows * 10, absorptionSlots, heartShakeRandom, -1);
@@ -303,7 +303,7 @@ public class UIHotbarRenderer
     /** Backward-compatible entry point for bars that never flash (absorption, armor). */
     private static void renderBar(Batcher2D batcher, float value, Identifier empty, Identifier half, Identifier full, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex)
     {
-        renderBar(batcher, value, value, 0F, empty, half, full, empty, half, full, x, y, slots, lowHealthShakeRandom, regenerationHeartIndex, 0L);
+        renderBar(batcher, value, value, value, 0F, empty, half, full, empty, half, full, x, y, slots, lowHealthShakeRandom, regenerationHeartIndex, 0L);
     }
 
     /**
@@ -332,7 +332,7 @@ public class UIHotbarRenderer
      * no specific "changed range" to scope it to), regardless of whether health is actually
      * changing this frame.
      */
-    private static void renderBar(Batcher2D batcher, float value, float lastValue, float heartFlash, Identifier empty, Identifier half, Identifier full, Identifier emptyBlinking, Identifier halfBlinking, Identifier fullBlinking, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex, long hudTick)
+    private static void renderBar(Batcher2D batcher, float value, float recentHealthLow, float recentHealthHigh, float heartFlash, Identifier empty, Identifier half, Identifier full, Identifier emptyBlinking, Identifier halfBlinking, Identifier fullBlinking, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex, long hudTick)
     {
         if (slots <= 0)
         {
@@ -342,9 +342,15 @@ public class UIHotbarRenderer
         final int FLASH_TICKS_PER_PHASE = 3;
 
         float normalized = MathHelper.clamp(value, 0F, slots * 2F) / 2F;
-        float changeLow = Math.min(value, lastValue);
-        float changeHigh = Math.max(value, lastValue);
-        boolean isDamageChanging = (changeHigh - changeLow) > 0.05F;
+        // A rolling window (see HotbarClip#resolveRecentHealthRange), not a single-tick comparison --
+        // that was only ever true for the one or two ticks where the health curve actually crosses,
+        // far shorter than one full on/off blink cycle, so whether it landed on a visible "on" phase
+        // came down to luck. This also gives damage and healing the SAME rule for which hearts flash:
+        // real vanilla only flashes the hearts actually within the range that changed, never the
+        // whole bar regardless of direction -- confirmed by testing healing at low health, where the
+        // fully-empty hearts outside the healed range should stay their normal black outline, not
+        // turn white.
+        boolean rangeChanging = (recentHealthHigh - recentHealthLow) > 0.05F;
         boolean flashPhaseOn = ((hudTick / FLASH_TICKS_PER_PHASE) % 2L) == 0L;
 
         for (int i = 0; i < slots; i++)
@@ -365,9 +371,12 @@ public class UIHotbarRenderer
             }
 
             /* This heart's HP range is [i*2, i*2+2) -- only flash it if that range overlaps the
-             * span between last tick's health and this tick's health (a real damage/heal change),
-             * or if the baked heart_flash curve is manually forcing every heart to flash. */
-            boolean heartAffected = heartFlash > 0F || (isDamageChanging && i * 2F < changeHigh && (i * 2F + 2F) > changeLow);
+             * span of health values seen over the last ~10 ticks (a real damage/heal change,
+             * whichever direction), and either the baked heart_flash curve or the range check itself
+             * confirms something's actually changing. Hearts outside that range -- including fully
+             * empty ones well above current health -- never flash, matching real vanilla. */
+            boolean heartInRange = i * 2F < recentHealthHigh && (i * 2F + 2F) > recentHealthLow;
+            boolean heartAffected = heartInRange && (heartFlash > 0F || rangeChanging);
             boolean blinking = heartAffected && !flashPhaseOn;
             Identifier emptyToDraw = blinking ? emptyBlinking : empty;
             Identifier fullToDraw = blinking ? fullBlinking : full;

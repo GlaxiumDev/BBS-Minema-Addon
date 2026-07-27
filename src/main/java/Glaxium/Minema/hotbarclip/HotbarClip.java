@@ -148,9 +148,9 @@ public class HotbarClip extends CameraClip
         this.selectedSlot.copyKeyframes(source.selectedSlot);
         this.offhandSlot.copyKeyframes(source.offHand);
 
-        if (source instanceof ReplayKeyframesHotbarAccess access)
+        if (source instanceof Glaxium.Minema.hotbarclip.ReplayKeyframesHotbarAccess access)
         {
-            RecordedHotbarData hud = access.bbsMinema$getHotbar();
+            Glaxium.Minema.hotbarclip.RecordedHotbarData hud = access.bbsMinema$getHotbar();
 
             if (hud != null && hud.hasData())
             {
@@ -293,6 +293,10 @@ public class HotbarClip extends CameraClip
         state.healthContainer = this.clampHealthContainer(this.healthContainer.interpolate(t));
         state.health = this.clampHealth(this.health.interpolate(t), state.healthContainer);
         state.lastHealth = this.resolveLastHealth(t, state.health);
+
+        float[] recentRange = this.resolveRecentHealthRange(t, state.health);
+        state.recentHealthLow = recentRange[0];
+        state.recentHealthHigh = recentRange[1];
         state.absorptionContainer = this.clampHealthContainer(this.absorptionContainer.interpolate(t));
         state.absorption = this.clampHealth(this.absorption.interpolate(t), state.absorptionContainer);
         state.heartType = this.clampHeartType(this.heartType.interpolate(t));
@@ -342,6 +346,46 @@ public class HotbarClip extends CameraClip
         {
             return currentHealth;
         }
+    }
+
+    /** How long a recent health change keeps its affected hearts flashing -- matches vanilla LivingEntity#maxHurtTime (10 ticks), so both damage and healing get the same reliable blink duration/count. */
+    static final float HEAL_FLASH_WINDOW_TICKS = 10F;
+
+    /**
+     * Lowest and highest health value seen over the last {@link #HEAL_FLASH_WINDOW_TICKS} ticks
+     * (including {@code currentHealth} itself) -- re-derived from the curve itself each call (same
+     * scrub/rewind-safe approach as {@link #resolveLastHealth}) rather than tracked with mutable
+     * state, so it stays correct no matter how the timeline is scrubbed. Shared by both damage and
+     * healing: real vanilla only flashes the specific hearts within the range that actually changed,
+     * not the whole bar, for either direction -- this range is what lets UIHotbarRenderer restrict
+     * the flash to exactly those hearts while still sustaining it for a full, reliable window instead
+     * of a single fragile tick.
+     */
+    private float[] resolveRecentHealthRange(float t, float currentHealth)
+    {
+        float low = currentHealth;
+        float high = currentHealth;
+
+        try
+        {
+            for (float ticksAgo = 1F; ticksAgo <= HEAL_FLASH_WINDOW_TICKS; ticksAgo += 1F)
+            {
+                float pastHealthContainer = this.clampHealthContainer(this.healthContainer.interpolate(t - ticksAgo));
+                float pastHealth = this.clampHealth(this.health.interpolate(t - ticksAgo), pastHealthContainer);
+
+                if (Float.isFinite(pastHealth))
+                {
+                    low = Math.min(low, pastHealth);
+                    high = Math.max(high, pastHealth);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            // Fall through -- same defensive fallback as resolveLastHealth.
+        }
+
+        return new float[] {low, high};
     }
 
     private ItemStack copyItem(ItemStack stack)
