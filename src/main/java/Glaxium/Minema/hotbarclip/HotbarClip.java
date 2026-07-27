@@ -148,9 +148,9 @@ public class HotbarClip extends CameraClip
         this.selectedSlot.copyKeyframes(source.selectedSlot);
         this.offhandSlot.copyKeyframes(source.offHand);
 
-        if (source instanceof Glaxium.Minema.hotbarclip.ReplayKeyframesHotbarAccess access)
+        if (source instanceof ReplayKeyframesHotbarAccess access)
         {
-            Glaxium.Minema.hotbarclip.RecordedHotbarData hud = access.bbsMinema$getHotbar();
+            RecordedHotbarData hud = access.bbsMinema$getHotbar();
 
             if (hud != null && hud.hasData())
             {
