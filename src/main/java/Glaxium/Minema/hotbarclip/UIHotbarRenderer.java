@@ -209,7 +209,7 @@ public class UIHotbarRenderer
         renderBar(batcher, hotbar.health, hotbar.recentHealthLow, hotbar.recentHealthHigh, heartFlash, container, heartHalf, heartFull, containerBlinking, heartHalfBlinking, heartFullBlinking, 0, barsY, healthSlots, heartShakeRandom, regenerationHeartIndex, hudTick);
         if (absorptionSlots > 0)
         {
-            renderBar(batcher, hotbar.absorption, hotbar.absorption, hotbar.absorption, hotbar.absorptionFlash, container, absorptionHalf, absorptionFull, containerBlinking, absorptionHalfBlinking, absorptionFullBlinking, 0, barsY - healthRows * 10, absorptionSlots, heartShakeRandom, -1, hudTick);
+            renderBar(batcher, hotbar.absorption, hotbar.recentAbsorptionLow, hotbar.recentAbsorptionHigh, hotbar.absorptionFlash, container, absorptionHalf, absorptionFull, containerBlinking, absorptionHalfBlinking, absorptionFullBlinking, 0, barsY - healthRows * 10, absorptionSlots, heartShakeRandom, -1, hudTick);
         }
         if (hotbar.armor > 0F)
         {
@@ -332,6 +332,14 @@ public class UIHotbarRenderer
      * <p>This is a from-scratch approximation of vanilla's heart-blink timing (not decompiled 1:1
      * from InGameHud), tuned to read clearly on camera: a hard on/off flash, 3 ticks per phase.
      * The cadence is isolated to the constant below if it needs to be faster/slower.
+     *
+     * <p>The golden/absorption-heart call site passes its own {@code recentAbsorptionLow}/
+     * {@code recentAbsorptionHigh} (tracking the absorption curve, not health) and {@code
+     * absorptionFlash} (a manual/extra toggle only -- see {@code HotbarClip#absorptionFlash}).
+     * Golden hearts deliberately have no damage-triggered flash equivalent to {@code heartFlash}:
+     * losing them (damage) should look like them just disappearing, with no flash at all -- only
+     * a genuine recent gain (eating a golden apple, etc.) via {@code recentlyIncreased} makes them
+     * flash.
      */
     private static void renderBar(Batcher2D batcher, float value, float recentHealthLow, float recentHealthHigh, boolean heartFlash, Identifier empty, Identifier half, Identifier full, Identifier emptyBlinking, Identifier halfBlinking, Identifier fullBlinking, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex, long hudTick)
     {

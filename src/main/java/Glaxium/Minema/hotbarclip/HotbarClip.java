@@ -71,7 +71,14 @@ public class HotbarClip extends CameraClip
     public final KeyframeChannel<Integer> experienceLevel = new KeyframeChannel<>("experience_level", KeyframeFactories.INTEGER);
     /** A toggle, not a numeric countdown -- see RecordedHotbarData#heartFlash. */
     public final KeyframeChannel<Boolean> heartFlash = new KeyframeChannel<>("heart_flash", KeyframeFactories.BOOLEAN);
-    /** Same idea as {@link #heartFlash}, but flashes the golden/absorption hearts specifically -- its own independent toggle track, so it can be hand-tuned separately from the regular hearts even though baking sets both from the same real hurtTime signal. */
+    /**
+     * A manual/extra flash toggle for the golden/absorption hearts specifically -- its own
+     * independent track, hand-keyframeable separately from the regular hearts. Automatic golden-
+     * heart flashing (on a genuine absorption gain, e.g. eating a golden apple) doesn't need this
+     * at all anymore -- see {@link #resolveRecentAbsorptionRange} / {@code applyClip} -- and
+     * baking deliberately leaves this track alone rather than copying in the real damage/hurtTime
+     * signal (which used to make golden hearts flash on damage too; see {@code bakeFromReplay}).
+     */
     public final KeyframeChannel<Boolean> absorptionFlash = new KeyframeChannel<>("absorption_flash", KeyframeFactories.BOOLEAN);
     public final KeyframeChannel<Vector4f> layout = new KeyframeChannel<>("layout", KeyframeFactories.VECTOR4F);
 
@@ -152,11 +159,14 @@ public class HotbarClip extends CameraClip
         this.selectedSlot.copyKeyframes(source.selectedSlot);
         this.offhandSlot.copyKeyframes(source.offHand);
 
-        // See the big comment on ensureLastKeyframeAtEnd below for why this matters: without an
-        // explicit keyframe at the clip's actual last tick, whatever the last recorded value was
-        // clamps forward and appears to hold all the way to the end of the clip's duration, even
-        // if the recording itself ended sooner. Computed once up front so both the real-hud-data
-        // branch below and the slots-only fallback can use the same value.
+        // This used to be Math.max(0F, this.duration.get() - 1) -- pinned to the CLIP's own
+        // duration rather than the RECORDING's. copyKeyframes() below always copies every
+        // recorded keyframe regardless of how short the clip is, so no data was ever actually
+        // lost -- but a short clip (even just 1 tick long) meant this "hold the last real value"
+        // point landed at tick 0 instead of wherever the recording actually stopped, which is
+        // exactly backwards: the point that's supposed to represent "recording ended, hold from
+        // here" should track the recording's own length, not the clip's. Computed properly below
+        // once the real data (if any) is known, so it works no matter what size the clip is.
         float lastTick = Math.max(0F, this.duration.get() - 1);
 
         if (source instanceof Glaxium.Minema.hotbarclip.ReplayKeyframesHotbarAccess access)
@@ -188,7 +198,21 @@ public class HotbarClip extends CameraClip
                 this.experience.copyKeyframes(hud.experience);
                 this.experienceLevel.copyKeyframes(hud.experienceLevel);
                 this.heartFlash.copyKeyframes(hud.heartFlash);
-                this.absorptionFlash.copyKeyframes(hud.heartFlash);
+
+                // Deliberately NOT baking hud.heartFlash (the real damage/hurtTime signal) into
+                // absorptionFlash anymore -- golden hearts now get their flash automatically from
+                // the absorption curve itself (see resolveRecentAbsorptionRange / applyClip),
+                // which only fires on a genuine recent increase (eating a golden apple, etc).
+                // Baking the damage signal in here was exactly what made golden hearts flash when
+                // taking damage instead of just disappearing silently, which is the bug this
+                // fixes. The absorptionFlash track itself is left alone (still hand-keyframeable
+                // for a manual/extra flash) -- it's just no longer overwritten from real damage.
+
+                // Now that every channel has the real recorded keyframes copied in, the true end
+                // of the recording is whichever channel's own last keyframe lands latest -- not
+                // the clip's duration field, which may be much shorter (or, after resizing the
+                // clip after a previous bake, longer) than what was actually recorded.
+                lastTick = this.findLastRecordedTick(hud);
 
                 // This used to get skipped entirely -- the branch above returned right after the
                 // copies, so none of the baked channels ever got their end-of-clip keyframe, only
@@ -221,6 +245,13 @@ public class HotbarClip extends CameraClip
             slots[index].insert(tick, item == null ? ItemStack.EMPTY : item.copy());
         }
 
+        // Same reasoning as the hud branch above: the real end of the recording is whichever of
+        // selectedSlot/mainHand's own keyframes ran latest, not the clip's duration field.
+        if (!ticks.isEmpty())
+        {
+            lastTick = ticks.last();
+        }
+
         // Every baked channel needs an actual keyframe at tick 0, not just whichever tick the
         // recording happened to start real changes at -- otherwise a channel whose only
         // keyframe is, say, "picked up a block at tick 50" would hold that single keyframe's
@@ -230,11 +261,11 @@ public class HotbarClip extends CameraClip
         // (rather than resetting to some arbitrary default) keeps everything before the first
         // real change exactly as flat/empty as it actually was.
         //
-        // Same reasoning at the other end: without an explicit keyframe at the clip's last tick,
-        // whatever the LAST recorded change was would clamp forward and appear to hold all the
-        // way to the end of the clip too, even past however long that item was actually held for
-        // in the source recording. Holding the last real value through to the clip's actual last
-        // tick keeps the tail end honest instead of silently extending it.
+        // Same reasoning at the other end: without an explicit keyframe at the recording's own
+        // last tick, whatever the LAST recorded change was would clamp forward and appear to hold
+        // all the way to wherever this gets sampled, even past however long that item was
+        // actually held for in the source recording. Holding the last real value through to the
+        // recording's actual last tick keeps the tail end honest instead of silently extending it.
 
         this.ensureFirstKeyframeAtZero(this.selectedSlot);
         this.ensureLastKeyframeAtEnd(this.selectedSlot, lastTick);
@@ -246,6 +277,49 @@ public class HotbarClip extends CameraClip
             this.ensureFirstKeyframeAtZero(slot);
             this.ensureLastKeyframeAtEnd(slot, lastTick);
         }
+    }
+
+    /**
+     * Latest keyframe tick across every channel {@code RecordedHotbarData} tracks -- i.e. the
+     * real point the recording stopped, regardless of how long or short this clip's own duration
+     * currently is. Used by {@link #bakeFromReplay} so baking always writes the recording's full
+     * length of keyframes with a correctly-placed final "hold" keyframe, instead of one pinned to
+     * the clip's duration (which could cut it off early for a short clip, or leave a gap for a
+     * long one).
+     */
+    private float findLastRecordedTick(Glaxium.Minema.hotbarclip.RecordedHotbarData hud)
+    {
+        float last = 0F;
+
+        for (KeyframeChannel slot : hud.slots)
+        {
+            last = Math.max(last, this.lastKeyframeTick(slot));
+        }
+
+        last = Math.max(last, this.lastKeyframeTick(hud.health));
+        last = Math.max(last, this.lastKeyframeTick(hud.healthContainer));
+        last = Math.max(last, this.lastKeyframeTick(hud.absorption));
+        last = Math.max(last, this.lastKeyframeTick(hud.absorptionContainer));
+        last = Math.max(last, this.lastKeyframeTick(hud.heartType));
+        last = Math.max(last, this.lastKeyframeTick(hud.hardcore));
+        last = Math.max(last, this.lastKeyframeTick(hud.regeneration));
+        last = Math.max(last, this.lastKeyframeTick(hud.armor));
+        last = Math.max(last, this.lastKeyframeTick(hud.hunger));
+        last = Math.max(last, this.lastKeyframeTick(hud.hungerEffect));
+        last = Math.max(last, this.lastKeyframeTick(hud.air));
+        last = Math.max(last, this.lastKeyframeTick(hud.experience));
+        last = Math.max(last, this.lastKeyframeTick(hud.experienceLevel));
+        last = Math.max(last, this.lastKeyframeTick(hud.heartFlash));
+
+        return last;
+    }
+
+    @SuppressWarnings("unchecked")
+    private float lastKeyframeTick(KeyframeChannel channel)
+    {
+        List<Keyframe> keyframes = channel.getKeyframes();
+
+        return keyframes.isEmpty() ? 0F : keyframes.get(keyframes.size() - 1).getTick();
     }
 
     private <T> void ensureFirstKeyframeAtZero(KeyframeChannel<T> channel)
@@ -320,6 +394,10 @@ public class HotbarClip extends CameraClip
         state.recentHealthHigh = recentRange[1];
         state.absorptionContainer = this.clampHealthContainer(this.absorptionContainer.interpolate(t));
         state.absorption = this.clampHealth(this.absorption.interpolate(t), state.absorptionContainer);
+
+        float[] recentAbsorptionRange = this.resolveRecentAbsorptionRange(t, state.absorption);
+        state.recentAbsorptionLow = recentAbsorptionRange[0];
+        state.recentAbsorptionHigh = recentAbsorptionRange[1];
         state.heartType = this.clampHeartType(this.heartType.interpolate(t));
         state.hardcore = this.interpolateHardcore(t);
         state.heartRegeneration = this.heartRegeneration.interpolate(t, false);
@@ -405,6 +483,40 @@ public class HotbarClip extends CameraClip
         catch (Exception exception)
         {
             // Fall through -- same defensive fallback as resolveLastHealth.
+        }
+
+        return new float[] {low, high};
+    }
+
+    /**
+     * Same rolling-window approach as {@link #resolveRecentHealthRange}, but tracking this clip's
+     * own {@link #absorption}/{@link #absorptionContainer} curve instead of {@link #health} --
+     * golden hearts have their own container size and their own value, so they need their own
+     * range rather than reusing health's (which is what let a golden-heart LOSS get mistaken for
+     * a "recently increased" gain before this existed).
+     */
+    private float[] resolveRecentAbsorptionRange(float t, float currentAbsorption)
+    {
+        float low = currentAbsorption;
+        float high = currentAbsorption;
+
+        try
+        {
+            for (float ticksAgo = 1F; ticksAgo <= HEAL_FLASH_WINDOW_TICKS; ticksAgo += 1F)
+            {
+                float pastAbsorptionContainer = this.clampHealthContainer(this.absorptionContainer.interpolate(t - ticksAgo));
+                float pastAbsorption = this.clampHealth(this.absorption.interpolate(t - ticksAgo), pastAbsorptionContainer);
+
+                if (Float.isFinite(pastAbsorption))
+                {
+                    low = Math.min(low, pastAbsorption);
+                    high = Math.max(high, pastAbsorption);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            // Fall through -- same defensive fallback as resolveRecentHealthRange.
         }
 
         return new float[] {low, high};

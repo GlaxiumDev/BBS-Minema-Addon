@@ -50,6 +50,22 @@ public class HotbarState
 
     public float healthContainer;
     public float absorption;
+
+    /**
+     * Lowest and highest {@code absorption} value seen over the last
+     * {@link HotbarClip#HEAL_FLASH_WINDOW_TICKS} ticks (including now) -- same rolling-window idea
+     * as {@link #recentHealthLow}/{@link #recentHealthHigh}, but tracking the golden/absorption
+     * hearts' own curve instead of regular health's. Golden hearts should only ever flash when
+     * they've genuinely just gone UP (e.g. eating a golden apple) -- taking damage should make
+     * them disappear silently, with no flash at all. See UIHotbarRenderer#renderBar's absorption
+     * call, which uses this range instead of {@link #absorption} duplicated on both ends (which
+     * would make the "recently increased" check always false).
+     */
+    public float recentAbsorptionLow;
+
+    /** @see #recentAbsorptionLow */
+    public float recentAbsorptionHigh;
+
     public float absorptionContainer;
     public float armor;
     public float hunger;

@@ -3,6 +3,7 @@ package Glaxium.Minema;
 import Glaxium.Minema.hotbarclip.HotbarClip;
 import Glaxium.Minema.hotbarclip.HotbarClipRenderer;
 import Glaxium.Minema.hotbarclip.UIHotbarClip;
+import Glaxium.Minema.hotbarclip.UIHotbarIntegerKeyframeFactory;
 import Glaxium.Minema.hotbarclip.UIHotbarItemKeyframeFactory;
 import Glaxium.Minema.ui.MinemaQuickCaptureScreen;
 import Glaxium.Minema.ui.MinemaSettingsButton;
@@ -133,6 +134,14 @@ public class BBSMinema implements ClientModInitializer
         // UIHotbarItemKeyframeFactory's own class doc). Applies to every ItemStack keyframe in
         // BBS's Film editor, not just Hotbar clips, since it's a strict addition.
         UIKeyframeFactory.register(KeyframeFactories.ITEM_STACK, UIHotbarItemKeyframeFactory::new);
+
+        // Replaces vanilla's own Integer keyframe editor widget, which never marks its value
+        // field as an integer field -- dragging or typing a value into it leaves it showing (and
+        // keeping) a decimal, even though it's only ever used for Integer-typed channels. See
+        // UIHotbarIntegerKeyframeFactory's own class doc for the full explanation; this is what
+        // was letting health/hunger/armor/etc. keyframes look and behave like floats when edited
+        // by hand, despite baking/recording always producing clean integers.
+        UIKeyframeFactory.register(KeyframeFactories.INTEGER, UIHotbarIntegerKeyframeFactory::new);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
         WorldRenderEvents.LAST.register(this::onWorldRenderLast);
