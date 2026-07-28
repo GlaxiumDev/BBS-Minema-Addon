@@ -62,6 +62,8 @@ public class HotbarState
      * rendered heart's outline to blink while this is true.
      */
     public boolean heartFlash;
+    /** Same idea as {@link #heartFlash}, but for the golden/absorption hearts specifically -- its own independent toggle track. See UIHotbarRenderer#renderBar's absorption call. */
+    public boolean absorptionFlash;
     public float x;
     public float y;
     public float scale;

@@ -206,6 +206,8 @@ public class UIHotbarClip extends UIClip<HotbarClip>
             case "experience" -> IKey.constant("Experience");
             case "experience_level" -> IKey.constant("Experience Level");
             case "layout" -> IKey.constant("Layout");
+            case "heart_flash" -> IKey.constant("Heart Flash");
+            case "absorption_flash" -> IKey.constant("Golden Heart Flash");
             default -> IKey.constant(id);
         };
     }

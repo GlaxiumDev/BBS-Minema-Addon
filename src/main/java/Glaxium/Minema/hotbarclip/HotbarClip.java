@@ -71,6 +71,8 @@ public class HotbarClip extends CameraClip
     public final KeyframeChannel<Integer> experienceLevel = new KeyframeChannel<>("experience_level", KeyframeFactories.INTEGER);
     /** A toggle, not a numeric countdown -- see RecordedHotbarData#heartFlash. */
     public final KeyframeChannel<Boolean> heartFlash = new KeyframeChannel<>("heart_flash", KeyframeFactories.BOOLEAN);
+    /** Same idea as {@link #heartFlash}, but flashes the golden/absorption hearts specifically -- its own independent toggle track, so it can be hand-tuned separately from the regular hearts even though baking sets both from the same real hurtTime signal. */
+    public final KeyframeChannel<Boolean> absorptionFlash = new KeyframeChannel<>("absorption_flash", KeyframeFactories.BOOLEAN);
     public final KeyframeChannel<Vector4f> layout = new KeyframeChannel<>("layout", KeyframeFactories.VECTOR4F);
 
     public final KeyframeChannel[] channels;
@@ -92,7 +94,7 @@ public class HotbarClip extends CameraClip
                 this.layout,
                 this.selectedSlot,
                 this.slot0, this.slot1, this.slot2, this.slot3, this.slot4, this.slot5, this.slot6, this.slot7, this.slot8, this.offhandSlot,
-                this.health, this.healthContainer, this.absorption, this.absorptionContainer, this.heartType, this.hardcore, this.heartRegeneration, this.armor, this.hunger, this.hungerEffect, this.air, this.experience, this.experienceLevel, this.heartFlash,
+                this.health, this.healthContainer, this.absorption, this.absorptionContainer, this.heartType, this.hardcore, this.heartRegeneration, this.armor, this.hunger, this.hungerEffect, this.air, this.experience, this.experienceLevel, this.heartFlash, this.absorptionFlash,
         };
 
         for (KeyframeChannel channel : this.channels)
@@ -117,6 +119,7 @@ public class HotbarClip extends CameraClip
         this.experience.insert(0, 0D);
         this.experienceLevel.insert(0, 0);
         this.heartFlash.insert(0, false);
+        this.absorptionFlash.insert(0, false);
         this.layout.insert(0, new Vector4f(0F, 0F, 1F, 0F));
     }
 
@@ -149,6 +152,13 @@ public class HotbarClip extends CameraClip
         this.selectedSlot.copyKeyframes(source.selectedSlot);
         this.offhandSlot.copyKeyframes(source.offHand);
 
+        // See the big comment on ensureLastKeyframeAtEnd below for why this matters: without an
+        // explicit keyframe at the clip's actual last tick, whatever the last recorded value was
+        // clamps forward and appears to hold all the way to the end of the clip's duration, even
+        // if the recording itself ended sooner. Computed once up front so both the real-hud-data
+        // branch below and the slots-only fallback can use the same value.
+        float lastTick = Math.max(0F, this.duration.get() - 1);
+
         if (source instanceof Glaxium.Minema.hotbarclip.ReplayKeyframesHotbarAccess access)
         {
             Glaxium.Minema.hotbarclip.RecordedHotbarData hud = access.bbsMinema$getHotbar();
@@ -178,6 +188,17 @@ public class HotbarClip extends CameraClip
                 this.experience.copyKeyframes(hud.experience);
                 this.experienceLevel.copyKeyframes(hud.experienceLevel);
                 this.heartFlash.copyKeyframes(hud.heartFlash);
+                this.absorptionFlash.copyKeyframes(hud.heartFlash);
+
+                // This used to get skipped entirely -- the branch above returned right after the
+                // copies, so none of the baked channels ever got their end-of-clip keyframe, only
+                // whatever tick the recording's own last real change happened to land on.
+                for (KeyframeChannel channel : this.channels)
+                {
+                    this.ensureFirstKeyframeAtZero(channel);
+                    this.ensureLastKeyframeAtEnd(channel, lastTick);
+                }
+
                 return;
             }
         }
@@ -214,7 +235,6 @@ public class HotbarClip extends CameraClip
         // way to the end of the clip too, even past however long that item was actually held for
         // in the source recording. Holding the last real value through to the clip's actual last
         // tick keeps the tail end honest instead of silently extending it.
-        float lastTick = Math.max(0F, this.duration.get() - 1);
 
         this.ensureFirstKeyframeAtZero(this.selectedSlot);
         this.ensureLastKeyframeAtEnd(this.selectedSlot, lastTick);
@@ -310,6 +330,7 @@ public class HotbarClip extends CameraClip
         state.experience = this.clampExperience(this.experience.interpolate(t));
         state.experienceLevel = this.clampExperienceLevel(this.experienceLevel.interpolate(t));
         state.heartFlash = this.heartFlash.interpolate(t, false);
+        state.absorptionFlash = this.absorptionFlash.interpolate(t, false);
         Vector4f layout = this.layout.interpolate(t, new Vector4f(0F, 0F, 1F, 0F));
         state.x = layout.x;
         state.y = layout.y;
@@ -435,17 +456,51 @@ public class HotbarClip extends CameraClip
         if (data != null && data.isMap())
         {
             MapType map = data.asMap();
-            MapType hardcoreData = map.getMap("hardcore", null);
 
-            if (hardcoreData != null && !"boolean".equals(hardcoreData.getString("type")))
-            {
-                hardcoreData.putString("type", "boolean");
-            }
+            this.ensureChannelType(map, "hardcore", "boolean");
+            this.ensureChannelType(map, "heart_flash", "boolean");
+            this.ensureChannelType(map, "absorption_flash", "boolean");
+            this.ensureChannelType(map, "selected_slot", "integer");
+            this.ensureChannelType(map, "health", "integer");
+            this.ensureChannelType(map, "health_container", "integer");
+            this.ensureChannelType(map, "absorption", "integer");
+            this.ensureChannelType(map, "absorption_container", "integer");
+            this.ensureChannelType(map, "heart_type", "integer");
+            this.ensureChannelType(map, "armor", "integer");
+            this.ensureChannelType(map, "hunger", "integer");
+            this.ensureChannelType(map, "air", "integer");
+            this.ensureChannelType(map, "experience_level", "integer");
 
             this.migrateLegacyLayout(map);
         }
 
         super.fromData(data);
+    }
+
+    /**
+     * {@code KeyframeChannel.fromData()} sets its factory straight from whatever "type" string is
+     * saved on disk for that channel -- it ignores what factory the channel was constructed with
+     * in Java entirely (see bbs-mod's own {@code KeyframeChannel#fromData}). So a clip saved back
+     * when a channel used to store, say, {@code KeyframeFactories.DOUBLE} values keeps loading
+     * back in as a double-factory channel forever, no matter what type the field is declared as
+     * in code now -- which is exactly why keyframes on these tracks were still showing as floats
+     * you could drag to any decimal, instead of snapping to clean whole numbers.
+     *
+     * <p>Rewriting the "type" tag on the raw saved data before it's parsed (same fix already used
+     * for {@code hardcore} below, just generalized to every channel this addon declares as
+     * Integer/Boolean) means the numbers get re-parsed through the correct factory from the start
+     * -- {@code IntegerKeyframeFactory#fromData} calls {@code .intValue()} on whatever numeric
+     * value was there, so this works regardless of whether the old data was stored as a double or
+     * an int. A channel that's already the right type is left untouched.
+     */
+    private void ensureChannelType(MapType map, String channelKey, String expectedType)
+    {
+        MapType channelData = map.getMap(channelKey, null);
+
+        if (channelData != null && !expectedType.equals(channelData.getString("type")))
+        {
+            channelData.putString("type", expectedType);
+        }
     }
 
     private void migrateLegacyLayout(MapType map)

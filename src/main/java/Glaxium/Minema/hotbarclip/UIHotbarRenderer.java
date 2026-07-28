@@ -173,6 +173,8 @@ public class UIHotbarRenderer
         Identifier heartFullBlinking = HEART_FULLS_BLINKING[heartType][hardcore];
         Identifier absorptionHalf = HEART_HALVES[HotbarState.HEART_ABSORBING][hardcore];
         Identifier absorptionFull = HEART_FULLS[HotbarState.HEART_ABSORBING][hardcore];
+        Identifier absorptionHalfBlinking = HEART_HALVES_BLINKING[HotbarState.HEART_ABSORBING][hardcore];
+        Identifier absorptionFullBlinking = HEART_FULLS_BLINKING[HotbarState.HEART_ABSORBING][hardcore];
         int healthSlots = MathHelper.ceil(MathHelper.clamp(hotbar.healthContainer, 0F, MAX_HEALTH_CONTAINER) / 2F);
         healthSlots = MathHelper.clamp(healthSlots, 0, MAX_HEALTH_ROWS * 10);
         int healthRows = Math.max(1, Math.min(MAX_HEALTH_ROWS, (healthSlots + 9) / 10));
@@ -207,7 +209,7 @@ public class UIHotbarRenderer
         renderBar(batcher, hotbar.health, hotbar.recentHealthLow, hotbar.recentHealthHigh, heartFlash, container, heartHalf, heartFull, containerBlinking, heartHalfBlinking, heartFullBlinking, 0, barsY, healthSlots, heartShakeRandom, regenerationHeartIndex, hudTick);
         if (absorptionSlots > 0)
         {
-            renderBar(batcher, hotbar.absorption, container, absorptionHalf, absorptionFull, 0, barsY - healthRows * 10, absorptionSlots, heartShakeRandom, -1);
+            renderBar(batcher, hotbar.absorption, hotbar.absorption, hotbar.absorption, hotbar.absorptionFlash, container, absorptionHalf, absorptionFull, containerBlinking, absorptionHalfBlinking, absorptionFullBlinking, 0, barsY - healthRows * 10, absorptionSlots, heartShakeRandom, -1, hudTick);
         }
         if (hotbar.armor > 0F)
         {
