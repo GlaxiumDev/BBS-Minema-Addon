@@ -9,27 +9,26 @@ import net.minecraft.entity.player.PlayerEntity;
 
 public final class RecordedHotbarData {
     public final KeyframeChannel[] slots = new KeyframeChannel[9];
-    public final KeyframeChannel health = channel("health", KeyframeFactories.DOUBLE);
-    public final KeyframeChannel healthContainer = channel("health_container", KeyframeFactories.DOUBLE);
-    public final KeyframeChannel absorption = channel("absorption", KeyframeFactories.DOUBLE);
-    public final KeyframeChannel absorptionContainer = channel("absorption_container", KeyframeFactories.DOUBLE);
+    public final KeyframeChannel health = channel("health", KeyframeFactories.INTEGER);
+    public final KeyframeChannel healthContainer = channel("health_container", KeyframeFactories.INTEGER);
+    public final KeyframeChannel absorption = channel("absorption", KeyframeFactories.INTEGER);
+    public final KeyframeChannel absorptionContainer = channel("absorption_container", KeyframeFactories.INTEGER);
     public final KeyframeChannel heartType = channel("heart_type", KeyframeFactories.INTEGER);
     public final KeyframeChannel hardcore = channel("hardcore", KeyframeFactories.BOOLEAN);
     public final KeyframeChannel regeneration = channel("regeneration", KeyframeFactories.BOOLEAN);
-    public final KeyframeChannel armor = channel("armor", KeyframeFactories.DOUBLE);
-    public final KeyframeChannel hunger = channel("hunger", KeyframeFactories.DOUBLE);
+    public final KeyframeChannel armor = channel("armor", KeyframeFactories.INTEGER);
+    public final KeyframeChannel hunger = channel("hunger", KeyframeFactories.INTEGER);
     public final KeyframeChannel hungerEffect = channel("hunger_effect", KeyframeFactories.BOOLEAN);
-    public final KeyframeChannel air = channel("air", KeyframeFactories.DOUBLE);
+    public final KeyframeChannel air = channel("air", KeyframeFactories.INTEGER);
     public final KeyframeChannel experience = channel("experience", KeyframeFactories.DOUBLE);
     public final KeyframeChannel experienceLevel = channel("experience_level", KeyframeFactories.INTEGER);
     /**
-     * Real hurt-flash timer straight from {@code LivingEntity#hurtTime}, which vanilla counts
-     * down from {@code maxHurtTime} (10) every time the player takes damage -- the same value
-     * that drives vanilla's own white hurt overlay/heart wobble. Recording it 1:1 means the
-     * baked keyframe curve reproduces exactly when and for how long the player was flashing,
-     * instead of needing it hand-keyframed afterward.
+     * Real hurt-flash state straight from {@code LivingEntity#hurtTime > 0}, the same condition
+     * that drives vanilla's own white hurt overlay/heart wobble. A plain toggle, not the numeric
+     * countdown value itself -- UIHotbarRenderer only ever cared whether it was active, never by
+     * how much, so recording the raw 0..10 timer was more precision than anything used.
      */
-    public final KeyframeChannel heartFlash = channel("heart_flash", KeyframeFactories.DOUBLE);
+    public final KeyframeChannel heartFlash = channel("heart_flash", KeyframeFactories.BOOLEAN);
 
     private static KeyframeChannel channel(String id, IKeyframeFactory factory) {
         return new KeyframeChannel("hotbar_" + id, factory);
@@ -52,9 +51,9 @@ public final class RecordedHotbarData {
 
     public void record(int tick, PlayerEntity player) {
         for (int i = 0; i < 9; i++) slots[i].insert(tick, player.getInventory().getStack(i).copy());
-        double absorptionValue = Math.max(0D, player.getAbsorptionAmount());
-        health.insert(tick, (double) player.getHealth());
-        healthContainer.insert(tick, (double) player.getMaxHealth());
+        int absorptionValue = Math.max(0, Math.round(player.getAbsorptionAmount()));
+        health.insert(tick, Math.round(player.getHealth()));
+        healthContainer.insert(tick, Math.round(player.getMaxHealth()));
         absorption.insert(tick, absorptionValue);
         absorptionContainer.insert(tick, absorptionValue);
         int type = player.hasStatusEffect(StatusEffects.POISON) ? HotbarState.HEART_POISONED
@@ -63,12 +62,12 @@ public final class RecordedHotbarData {
         heartType.insert(tick, type);
         hardcore.insert(tick, player.getWorld().getLevelProperties().isHardcore());
         regeneration.insert(tick, player.hasStatusEffect(StatusEffects.REGENERATION));
-        armor.insert(tick, (double) player.getArmor());
-        hunger.insert(tick, (double) player.getHungerManager().getFoodLevel());
+        armor.insert(tick, player.getArmor());
+        hunger.insert(tick, player.getHungerManager().getFoodLevel());
         hungerEffect.insert(tick, player.hasStatusEffect(StatusEffects.HUNGER));
-        air.insert(tick, (double) Math.max(0, Math.min(300, player.getAir())));
+        air.insert(tick, Math.max(0, Math.min(300, player.getAir())));
         experience.insert(tick, (double) player.experienceProgress);
         experienceLevel.insert(tick, player.experienceLevel);
-        heartFlash.insert(tick, (double) Math.max(0, player.hurtTime));
+        heartFlash.insert(tick, player.hurtTime > 0);
     }
 }

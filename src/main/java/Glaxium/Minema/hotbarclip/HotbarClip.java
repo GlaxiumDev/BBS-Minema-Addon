@@ -56,20 +56,21 @@ public class HotbarClip extends CameraClip
     public final KeyframeChannel<ItemStack> slot7 = new KeyframeChannel<>("slot_7", KeyframeFactories.ITEM_STACK);
     public final KeyframeChannel<ItemStack> slot8 = new KeyframeChannel<>("slot_8", KeyframeFactories.ITEM_STACK);
     public final KeyframeChannel<ItemStack> offhandSlot = new KeyframeChannel<>("offhand_slot", KeyframeFactories.ITEM_STACK);
-    public final KeyframeChannel<Double> health = new KeyframeChannel<>("health", KeyframeFactories.DOUBLE);
-    public final KeyframeChannel<Double> healthContainer = new KeyframeChannel<>("health_container", KeyframeFactories.DOUBLE);
-    public final KeyframeChannel<Double> absorption = new KeyframeChannel<>("absorption", KeyframeFactories.DOUBLE);
-    public final KeyframeChannel<Double> absorptionContainer = new KeyframeChannel<>("absorption_container", KeyframeFactories.DOUBLE);
+    public final KeyframeChannel<Integer> health = new KeyframeChannel<>("health", KeyframeFactories.INTEGER);
+    public final KeyframeChannel<Integer> healthContainer = new KeyframeChannel<>("health_container", KeyframeFactories.INTEGER);
+    public final KeyframeChannel<Integer> absorption = new KeyframeChannel<>("absorption", KeyframeFactories.INTEGER);
+    public final KeyframeChannel<Integer> absorptionContainer = new KeyframeChannel<>("absorption_container", KeyframeFactories.INTEGER);
     public final KeyframeChannel<Integer> heartType = new KeyframeChannel<>("heart_type", KeyframeFactories.INTEGER);
     public final KeyframeChannel<Boolean> hardcore = new KeyframeChannel<>("hardcore", KeyframeFactories.BOOLEAN);
     public final KeyframeChannel<Boolean> heartRegeneration = new KeyframeChannel<>("heart_regeneration", KeyframeFactories.BOOLEAN);
-    public final KeyframeChannel<Double> armor = new KeyframeChannel<>("armor", KeyframeFactories.DOUBLE);
-    public final KeyframeChannel<Double> hunger = new KeyframeChannel<>("hunger", KeyframeFactories.DOUBLE);
+    public final KeyframeChannel<Integer> armor = new KeyframeChannel<>("armor", KeyframeFactories.INTEGER);
+    public final KeyframeChannel<Integer> hunger = new KeyframeChannel<>("hunger", KeyframeFactories.INTEGER);
     public final KeyframeChannel<Boolean> hungerEffect = new KeyframeChannel<>("hunger_effect", KeyframeFactories.BOOLEAN);
-    public final KeyframeChannel<Double> air = new KeyframeChannel<>("air", KeyframeFactories.DOUBLE);
+    public final KeyframeChannel<Integer> air = new KeyframeChannel<>("air", KeyframeFactories.INTEGER);
     public final KeyframeChannel<Double> experience = new KeyframeChannel<>("experience", KeyframeFactories.DOUBLE);
     public final KeyframeChannel<Integer> experienceLevel = new KeyframeChannel<>("experience_level", KeyframeFactories.INTEGER);
-    public final KeyframeChannel<Double> heartFlash = new KeyframeChannel<>("heart_flash", KeyframeFactories.DOUBLE);
+    /** A toggle, not a numeric countdown -- see RecordedHotbarData#heartFlash. */
+    public final KeyframeChannel<Boolean> heartFlash = new KeyframeChannel<>("heart_flash", KeyframeFactories.BOOLEAN);
     public final KeyframeChannel<Vector4f> layout = new KeyframeChannel<>("layout", KeyframeFactories.VECTOR4F);
 
     public final KeyframeChannel[] channels;
@@ -102,20 +103,20 @@ public class HotbarClip extends CameraClip
         this.add(this.source);
 
         this.selectedSlot.insert(0, 0);
-        this.health.insert(0, 20D);
-        this.healthContainer.insert(0, 20D);
-        this.absorption.insert(0, 0D);
-        this.absorptionContainer.insert(0, 0D);
+        this.health.insert(0, 20);
+        this.healthContainer.insert(0, 20);
+        this.absorption.insert(0, 0);
+        this.absorptionContainer.insert(0, 0);
         this.heartType.insert(0, HotbarState.HEART_NORMAL);
         this.hardcore.insert(0, false);
         this.heartRegeneration.insert(0, false);
-        this.armor.insert(0, 0D);
-        this.hunger.insert(0, 20D);
+        this.armor.insert(0, 0);
+        this.hunger.insert(0, 20);
         this.hungerEffect.insert(0, false);
-        this.air.insert(0, 300D);
+        this.air.insert(0, 300);
         this.experience.insert(0, 0D);
         this.experienceLevel.insert(0, 0);
-        this.heartFlash.insert(0, 0D);
+        this.heartFlash.insert(0, false);
         this.layout.insert(0, new Vector4f(0F, 0F, 1F, 0F));
     }
 
@@ -302,13 +303,13 @@ public class HotbarClip extends CameraClip
         state.heartType = this.clampHeartType(this.heartType.interpolate(t));
         state.hardcore = this.interpolateHardcore(t);
         state.heartRegeneration = this.heartRegeneration.interpolate(t, false);
-        state.armor = this.clampStat(this.armor.interpolate(t));
-        state.hunger = this.clampStat(this.hunger.interpolate(t));
+        state.armor = this.clampStatInt(this.armor.interpolate(t));
+        state.hunger = this.clampStatInt(this.hunger.interpolate(t));
         state.hungerEffect = this.hungerEffect.interpolate(t, false);
-        state.air = this.clampAir(this.air.interpolate(t));
+        state.air = this.clampAirInt(this.air.interpolate(t));
         state.experience = this.clampExperience(this.experience.interpolate(t));
         state.experienceLevel = this.clampExperienceLevel(this.experienceLevel.interpolate(t));
-        state.heartFlash = Math.max(0F, this.heartFlash.interpolate(t, 0D).floatValue());
+        state.heartFlash = this.heartFlash.interpolate(t, false);
         Vector4f layout = this.layout.interpolate(t, new Vector4f(0F, 0F, 1F, 0F));
         state.x = layout.x;
         state.y = layout.y;
@@ -393,14 +394,14 @@ public class HotbarClip extends CameraClip
         return stack == null ? ItemStack.EMPTY : stack.copy();
     }
 
-    private float clampStat(Double value)
+    private float clampStatInt(Integer value)
     {
-        return Math.max(0F, Math.min(20F, value.floatValue()));
+        return Math.max(0, Math.min(20, value));
     }
 
-    private float clampHealth(Double value, float healthContainer)
+    private float clampHealth(Integer value, float healthContainer)
     {
-        return Math.max(0F, Math.min(healthContainer, value.floatValue()));
+        return Math.max(0F, Math.min(healthContainer, value));
     }
 
     private int clampHeartType(Integer value)
@@ -408,9 +409,9 @@ public class HotbarClip extends CameraClip
         return Math.max(HotbarState.HEART_NORMAL, Math.min(HotbarState.HEART_FROZEN, value));
     }
 
-    private float clampHealthContainer(Double value)
+    private float clampHealthContainer(Integer value)
     {
-        return Math.max(0F, Math.min(MAX_HEALTH_CONTAINER, value.floatValue()));
+        return Math.max(0F, Math.min(MAX_HEALTH_CONTAINER, value));
     }
 
     private float clampExperience(Double value)
@@ -418,9 +419,9 @@ public class HotbarClip extends CameraClip
         return Math.max(0F, Math.min(1F, value.floatValue()));
     }
 
-    private float clampAir(Double value)
+    private float clampAirInt(Integer value)
     {
-        return Math.max(0F, Math.min(300F, value.floatValue()));
+        return Math.max(0, Math.min(300, value));
     }
 
     private int clampExperienceLevel(Integer value)

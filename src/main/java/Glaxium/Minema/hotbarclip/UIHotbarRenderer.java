@@ -183,7 +183,7 @@ public class UIHotbarRenderer
         Random hungerShakeRandom = hotbar.hunger <= 6F ? new Random(thisTickSeed() + 17L) : null;
         int regenerationHeartIndex = -1;
         long hudTick = currentHudTick();
-        float heartFlash = Math.max(0F, hotbar.heartFlash);
+        boolean heartFlash = hotbar.heartFlash;
 
         if (hotbar.heartRegeneration && healthSlots > 0 && hotbar.health > 0F)
         {
@@ -303,7 +303,7 @@ public class UIHotbarRenderer
     /** Backward-compatible entry point for bars that never flash (absorption, armor). */
     private static void renderBar(Batcher2D batcher, float value, Identifier empty, Identifier half, Identifier full, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex)
     {
-        renderBar(batcher, value, value, value, 0F, empty, half, full, empty, half, full, x, y, slots, lowHealthShakeRandom, regenerationHeartIndex, 0L);
+        renderBar(batcher, value, value, value, false, empty, half, full, empty, half, full, x, y, slots, lowHealthShakeRandom, regenerationHeartIndex, 0L);
     }
 
     /**
@@ -318,21 +318,20 @@ public class UIHotbarRenderer
      * of the normal black-outlined container and red fill, alternating every phase. That's what
      * actually produces the white flash you see during a vanilla hurt animation.
      *
-     * <p>Only the hearts actually taking the damage flash -- i.e. whose HP range overlaps the
-     * span between {@code lastValue} and {@code value} -- not the whole bar. Hearts outside that
-     * range keep rendering normally the whole time.
+     * <p>Damage flashes the whole bar's outline via {@code heartFlash} (the real vanilla
+     * {@code hurtTime > 0} toggle, baked 1:1 -- see RecordedHotbarData), sustained for exactly as
+     * long as that toggle is true. Healing has no equivalent vanilla signal, so it instead flashes
+     * the whole bar's outline whenever health has genuinely trended up over the last ~10 ticks and
+     * is currently at/near the top of that recent range -- see {@code recentlyIncreased} below.
+     * Either way, only the OUTLINE (container sprite) flashes; the heart FILL (full/half) never
+     * switches to a blinking variant, it stays its normal color always -- these are deliberately
+     * separate sprite layers.
      *
      * <p>This is a from-scratch approximation of vanilla's heart-blink timing (not decompiled 1:1
      * from InGameHud), tuned to read clearly on camera: a hard on/off flash, 3 ticks per phase.
      * The cadence is isolated to the constant below if it needs to be faster/slower.
-     *
-     * <p>{@code heartFlash} is a second, independent trigger for the same blink, driven by the
-     * baked {@code heart_flash} keyframe curve rather than a health change: when it's above 0,
-     * every currently rendered heart flashes for as long as the curve holds it there (since there's
-     * no specific "changed range" to scope it to), regardless of whether health is actually
-     * changing this frame.
      */
-    private static void renderBar(Batcher2D batcher, float value, float recentHealthLow, float recentHealthHigh, float heartFlash, Identifier empty, Identifier half, Identifier full, Identifier emptyBlinking, Identifier halfBlinking, Identifier fullBlinking, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex, long hudTick)
+    private static void renderBar(Batcher2D batcher, float value, float recentHealthLow, float recentHealthHigh, boolean heartFlash, Identifier empty, Identifier half, Identifier full, Identifier emptyBlinking, Identifier halfBlinking, Identifier fullBlinking, int x, int y, int slots, Random lowHealthShakeRandom, int regenerationHeartIndex, long hudTick)
     {
         if (slots <= 0)
         {
@@ -342,16 +341,17 @@ public class UIHotbarRenderer
         final int FLASH_TICKS_PER_PHASE = 3;
 
         float normalized = MathHelper.clamp(value, 0F, slots * 2F) / 2F;
-        // A rolling window (see HotbarClip#resolveRecentHealthRange), not a single-tick comparison --
-        // that was only ever true for the one or two ticks where the health curve actually crosses,
-        // far shorter than one full on/off blink cycle, so whether it landed on a visible "on" phase
-        // came down to luck. This also gives damage and healing the SAME rule for which hearts flash:
-        // real vanilla only flashes the hearts actually within the range that changed, never the
-        // whole bar regardless of direction -- confirmed by testing healing at low health, where the
-        // fully-empty hearts outside the healed range should stay their normal black outline, not
-        // turn white.
-        boolean rangeChanging = (recentHealthHigh - recentHealthLow) > 0.05F;
+        // Damage is already fully handled by heartFlash alone (the real vanilla hurtTime signal,
+        // sustained for its actual duration regardless of anything here) -- it doesn't need any
+        // help from this. This is specifically about healing: only flash when health has genuinely
+        // trended UP over the last ~10 ticks and is currently sitting at/near the top of that recent
+        // range, i.e. it just finished rising -- not merely "there was some spread in the window",
+        // which could also be true partway through a decrease, or from small interpolation noise
+        // that never actually nets out to a real increase.
+        boolean recentlyIncreased = (recentHealthHigh - recentHealthLow) > 0.05F && value >= recentHealthHigh - 0.05F;
+        boolean heartAffected = heartFlash || recentlyIncreased;
         boolean flashPhaseOn = ((hudTick / FLASH_TICKS_PER_PHASE) % 2L) == 0L;
+        boolean outlineBlinking = heartAffected && !flashPhaseOn;
 
         for (int i = 0; i < slots; i++)
         {
@@ -370,17 +370,10 @@ public class UIHotbarRenderer
                 iconY -= 2;
             }
 
-            /* This heart's HP range is [i*2, i*2+2) -- only flash it if that range overlaps the
-             * span of health values seen over the last ~10 ticks (a real damage/heal change,
-             * whichever direction), and either the baked heart_flash curve or the range check itself
-             * confirms something's actually changing. Hearts outside that range -- including fully
-             * empty ones well above current health -- never flash, matching real vanilla. */
-            boolean heartInRange = i * 2F < recentHealthHigh && (i * 2F + 2F) > recentHealthLow;
-            boolean heartAffected = heartInRange && (heartFlash > 0F || rangeChanging);
-            boolean blinking = heartAffected && !flashPhaseOn;
-            Identifier emptyToDraw = blinking ? emptyBlinking : empty;
-            Identifier fullToDraw = blinking ? fullBlinking : full;
-            Identifier halfToDraw = blinking ? halfBlinking : half;
+            Identifier emptyToDraw = outlineBlinking ? emptyBlinking : empty;
+            // Fill sprites deliberately never use the *Blinking variant -- see comment above.
+            Identifier fullToDraw = full;
+            Identifier halfToDraw = half;
 
             batcher.getContext().drawGuiTexture(emptyToDraw, iconX, iconY, 9, 9);
 
